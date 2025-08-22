@@ -80,4 +80,14 @@ From the Enterprise Network’s point of view:
 	•	Security and compliance are guaranteed by network isolation, certificate-based communication, and escrow-backed asset transfer logic.
 
 
+The AMB is represented by the combination of:
+	•	TokenBridge Contract (on Enterprise chain)
+	•	Bridge Operator (off-chain relay)
+	•	Notary Contract (on Linea)
+
+This trio forms the Arbitrary Message Bridge, because:
+	•	Enterprise contract emits a message (any payload, not only token events).
+	•	Bridge Operator relays it across.
+	•	Notary + Noto on Linea verify/execute it.
+
 
