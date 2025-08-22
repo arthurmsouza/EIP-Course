@@ -1,0 +1,17 @@
+Considering that this private network is EVM-compatible, the deployed smart contracts are designed with modularity and upgradability as core principles, ensuring that business logic can evolve without disrupting existing state or user balances. This is achieved through established patterns such as the Proxy (UUPS/Transparent Proxy) model or the Diamond Standard (EIP-2535), which separate storage from logic and allow new contract implementations to be plugged in seamlessly. By adopting these approaches, the platform supports safe upgrades, modular feature extensions, and long-term maintainability while preserving security and auditability of deployed assets.
+
+
+In the future production environment, the implementation will evolve from prototype helpers to fully decoupled microservices integrated with AWS KMS for secure key custody and transaction signing. The Wallet Service will manage wallet creation and address queries, while the RelayerSigner service will ensure nonce-safe, policy-driven transaction submission. By centralizing cryptographic operations in KMS and separating responsibilities across dedicated services, the platform will achieve enterprise-grade security, scalability, and compliance, ensuring readiness for real-world financial operations.
+
+Transaction Signing Flow 
+2.	Backend API Prepares Transaction
+The Backend API validates the request, encodes the smart contract call (ABI), and builds a transaction intent (function + parameters + target contract).
+	3.	RelayerSigner Handles Transaction
+The intent is passed to the RelayerSigner service. RelayerSigner is responsible for:
+	•	Allocating a nonce (nonce-safe queue).
+	•	Setting gas policies (gas limit, priority fee).
+	•	Preparing the raw transaction object.
+	4.	Request Signature from AWS KMS
+RelayerSigner calls AWS KMS (via HTTPS/KMS SDK) with the transaction hash/digest.
+	•	KMS signs the payload internally using the private key stored in its HSM.
+	•	Only the signature is returned; the private key never leaves AWS KMS.
