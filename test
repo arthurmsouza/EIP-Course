@@ -1,27 +1,6 @@
-Wallet create flow
-
-Step 1 – Backend API → Wallet Service
-The Backend API calls POST /wallets with user context, target chainId, and an idempotency key. The Wallet Service validates the request for duplicates and authorization.
-
-Step 2 – Wallet Service → AWS KMS
-The Wallet Service uses the KMS SDK to generate a secp256k1 key pair. The private key stays in the HSM; only the public key and kms_key_id are returned.3
-Step 3 – Derive Address & Persist
-The service derives the EVM address from the public key. It persists {userId, address, kms_key_id, chainId, createdAt} and writes an audit event.
-
-Step 4  – Backend Off-chain Registry Update
-The Wallet Service returns {address, kms_key_id, chainId} to the Backend. Backend persists this mapping in its wallet registry to tie the user to the address and key.
-
-Trabsaction Flow
-1.	Prepares the raw transaction (to, value, data, gas, nonce, chainId).
-	2.	Calculates the transaction hash/digest (the message that needs to be signed, e.g., per EIP-155 for Ethereum).
-	3.	Sends only this digest to AWS KMS via the KMS SDK.
-	4.	KMS signs the digest internally using the private key in HSM and returns the signature.
-	5.	RelayerSigner attaches the signature to the raw transaction → serializes (RLP encoding) → broadcasts via JSON-RPC to the blockchain node.
-
-Wallet Creation Flow
-	1.	Backend API sends request to the Wallet Service with user context, chainId, and an idempotency key.
-	2.	Wallet Service calls AWS KMS to generate a new secp256k1 key pair inside the HSM.
-	3.	AWS KMS creates the key pair securely; the private key never leaves KMS, and the service retrieves the public key + kms_key_id.
-	4.	Wallet Service derives the EVM address from the public key and persists {userId, address, kms_key_id, chainId, createdAt} with audit logs.
-	5.	Backend API updates its wallet registry by tying the user to the new address and KMS key reference for future queries and signing operations.
-
+	1.	Backend API validates the request and builds the transaction intent, including function, parameters, and target contract.
+	2.	RelayerSigner prepares the raw transaction with values such as to, value, data, gas, nonce, and chainId.
+	3.	RelayerSigner calculates the transaction digest (hash to be signed, following EIP-155 for Ethereum).
+	4.	RelayerSigner sends the digest to AWS KMS using the KMS SDK.
+	5.	AWS KMS signs the digest internally with the private key in the HSM and returns the signature.
+	6.	RelayerSigner attaches the signature to the raw transaction, serializes it using RLP encoding, and broadcasts it to the blockchain node via JSON-RPC.
