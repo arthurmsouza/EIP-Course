@@ -1,6 +1,83 @@
-	1.	Backend API validates the request and builds the transaction intent, including function, parameters, and target contract.
-	2.	RelayerSigner prepares the raw transaction with values such as to, value, data, gas, nonce, and chainId.
-	3.	RelayerSigner calculates the transaction digest (hash to be signed, following EIP-155 for Ethereum).
-	4.	RelayerSigner sends the digest to AWS KMS using the KMS SDK.
-	5.	AWS KMS signs the digest internally with the private key in the HSM and returns the signature.
-	6.	RelayerSigner attaches the signature to the raw transaction, serializes it using RLP encoding, and broadcasts it to the blockchain node via JSON-RPC.
+	The Swift SLE Interoperability architecture establishes a secure and controlled communication channel between the enterprise DLT network and Swift’s Secure Ledger Environment (SLE). In this setup, the Bridge Operator is hosted inside the Swift SLE and acts as the relay component of the Arbitrary Message Bridge (AMB). The Bridge Operator monitors events from the enterprise blockchain, validates them, and forwards the corresponding payloads into the SLE for execution.
+
+All communication between the enterprise DLT and the Bridge Operator in SLE occurs over a trusted network channel enforced by:
+	•	Certified IP whitelisting to restrict inbound and outbound traffic.
+	•	Mutual TLS with X.509 certificates issued by an approved CA to authenticate endpoints.
+	•	Firewalls and network segmentation to isolate the Bridge Operator from untrusted domains while ensuring secure routing of messages.
+
+This design ensures that only authorized blockchain nodes within the enterprise network can send messages to the Bridge Operator, while the operator in SLE securely forwards these messages for processing and integration with Swift’s messaging layer. By embedding the bridge inside SLE, trust boundaries are reinforced: the enterprise network controls the message origin, while Swift SLE governs the secure relay and final execution.
+
+Trusted Private Bridge – Alternative Solution
+
+This alternative design focuses on preserving user anonymity while bridging assets between an enterprise private chain and the Swift SLE privacy system.
+
+Forward Flow (Enterprise → Linea / Swift Privacy)
+	1.	A user on the private chain locks assets into an escrow contract with the destination defined on Linea.
+	2.	The Bridge Operator (running inside Swift SLE) monitors these escrow events.
+	3.	When an escrow event is detected, the Bridge Operator sends a bridge request (amount, token type, destination address).
+	4.	The Notary validates the request, checking sender trust and authorization.
+	5.	If valid, the Notary (or Noto) mints the equivalent token on Linea and transfers it to the destination address.
+	•	If this is the first time bridging a new asset, a new Noto token may be deployed.
+
+Reverse Flow (Swift Privacy → Enterprise)
+	1.	A user on Swift SLE privacy system wants to move assets back to the enterprise ledger.
+	2.	The user submits a burn request to the Notary.
+	3.	The Notary burns the Noto token on Linea.
+	4.	The Notary provides proof of burn to the Bridge Operator in SLE.
+	5.	The Bridge Operator instructs the escrow contract on the enterprise chain to release the locked funds to the user’s destination address.
+
+Swift SLE Interoperability – Enterprise Network Perspective
+
+Core Points
+	•	The Enterprise Network is the origin and destination for tokenized assets and financial transactions that require interoperability with Swift SLE.
+	•	Interoperability is achieved via a Trusted Private Bridge pattern, where the Bridge Operator is hosted inside the Swift SLE.
+	•	All communications between the Enterprise Network and SLE are secured using trusted IPs, mutual TLS certificates, and firewall-enforced network segmentation.
+	•	The Enterprise Network interacts with escrow smart contracts and bridge contracts, while the actual message relay and validation are handled within SLE.
+
+⸻
+
+Key Components in Enterprise Network
+	1.	Enterprise DLT Nodes (Bank A, Bank B, Bank C, etc.)
+	•	Submit user transactions (e.g., token lock, transfer initiation).
+	•	Expose events for escrow/bridge monitoring.
+	2.	Escrow / Token Bridge Contract
+	•	Holds locked funds when bridging to SLE.
+	•	Emits events monitored by the Bridge Operator in SLE.
+	•	Releases funds when receiving proof of burn from SLE.
+	3.	ERC-3643 / Token Contracts
+	•	Represent tokenized assets in the private chain.
+	•	Integrated with compliance rules (KYC/AML) but isolated from cross-chain execution.
+	4.	Network Security Layer
+	•	Firewall rules restrict communication only to the SLE Bridge Operator.
+	•	Trusted IPs allow point-to-point connections.
+	•	TLS Certificates authenticate enterprise nodes when sending requests to SLE.
+
+⸻
+
+Interaction Flow (Enterprise → SLE → Enterprise)
+
+1. Enterprise → Swift SLE (Asset Export)
+	1.	User in the Enterprise Network initiates a transfer request by locking tokens in the Escrow Contract.
+	2.	The Escrow Contract emits an event with details: {amount, token, destinationAddress}.
+	3.	The Bridge Operator (inside SLE) monitors and captures this event via a secure, certificate-based channel.
+	4.	The Bridge Operator sends a bridge request to the Notary in SLE.
+	5.	The Notary validates and instructs Linea/Noto to mint the equivalent token on the destination side.
+
+2. Swift SLE → Enterprise (Asset Import / Return Flow)
+	1.	A user in Swift SLE burns a token on Linea via the Notary.
+	2.	The Notary generates proof of burn and forwards it to the Bridge Operator.
+	3.	The Bridge Operator sends the validated proof back to the Enterprise Escrow Contract.
+	4.	The Escrow Contract releases the locked tokens to the user’s specified address on the Enterprise chain.
+
+⸻
+
+Enterprise Perspective Summary
+
+From the Enterprise Network’s point of view:
+	•	Escrow Contracts are the main integration point for cross-chain bridging.
+	•	No direct exposure to Linea or external networks — all cross-chain logic is encapsulated in SLE.
+	•	Bridge Operator in SLE acts as the trusted relay, enforcing interoperability while preserving the Enterprise network’s compliance and security posture.
+	•	Security and compliance are guaranteed by network isolation, certificate-based communication, and escrow-backed asset transfer logic.
+
+
+
