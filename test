@@ -90,4 +90,14 @@ This trio forms the Arbitrary Message Bridge, because:
 	•	Bridge Operator relays it across.
 	•	Notary + Noto on Linea verify/execute it.
 
+Where the AMB fits
+	•	The AMB is represented by the combination of:
+	•	TokenBridge Contract (on Enterprise chain)
+	•	Bridge Operator (off-chain relay)
+	•	Notary Contract (on Linea)
+
+This trio forms the Arbitrary Message Bridge, because:
+	•	Enterprise contract emits a message (any payload, not only token events).
+	•	Bridge Operator relays it across.
+	•	Notary + Noto on Linea verify/execute it.
 
