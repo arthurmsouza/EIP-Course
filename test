@@ -1,15 +1,12 @@
-Direct Relayer Integration)
+2) Enterprise Backend creates and signs a meta‑transaction, then submits to the Paladin Relayer API (safe channel)
+The Backend builds the EIP‑712 payload (domain + message with nonce/deadline), signs it with the participant’s wallet (or KMS), and sends { payload, userSignature, nonce, deadline } to the Relayer.
 
-The Paladin Relayer is the privacy solution that enables secure interoperability between the Enterprise network and the Swift SLE ecosystem. Instead of relying on external bridge components, the Enterprise interacts directly with the Paladin Relayer API using the Paladin SDK over a secure, authenticated network channel.
-
-As the privacy layer, the Paladin Relayer enforces strict admission controls (mTLS, IP allow-listing, JWT/HMAC) and ensures that every request complies with enterprise and regulatory policies. Once validated, the Relayer delegates execution to the Paladin Notary and Privacy Group runtime, where Noto tokens and Hooks smart contracts enforce confidentiality, compliance, and business logic.
-
-This design provides enterprises with a direct, privacy-preserving integration path:
-	•	Deposit flows allow enterprises to request minting of Noto tokens inside a private Paladin domain.
-	•	Withdrawal flows enable enterprises to burn Noto tokens privately and reconcile settlement back into their enterprise ledgers.
-
-By centralizing privacy and compliance functions in the Paladin Relayer, the solution ensures that sensitive operations remain protected, while interoperability with the Swift SLE environment is maintained through a controlled and secure channel.
-
-The interoperability between the Enterprise network and the Swift SLE ecosystem enables digital assets and tokenized instruments (ERC20/ERC3643) to be managed securely while preserving privacy and compliance. This model uses the Paladin Relayer as the privacy solution, providing a controlled interface for enterprises to interact with the SLE environment. Through the Paladin SDK, enterprise applications connect to the Relayer API over a trusted network channel, where all requests are authenticated and authorized using mechanisms such as IP allow-listing, mutual TLS with X.509 certificates, and application-level credentials (JWT/HMAC).
-
-Once admitted, the Paladin Relayer validates each operation, applies compliance policies through the Notary, and executes the corresponding actions inside the Privacy Group runtime, where Noto tokens and Hooks contracts enforce business logic and confidentiality. This design allows enterprises to mint or burn Noto tokens privately while ensuring interoperability with the Swift SLE ecosystem, enabling secure flows for issuance (deposit) and redemption (withdrawal) without exposing sensitive operations to untrusted domains.
+3.	Relayer pre-check (off-chain ECDSA recover)
+Before paying gas, the Paladin Relayer validates the signature off-chain:
+	•	The recovered address equals the claimed user in the payload.
+	•	The nonce has not been replayed.
+	•	The deadline has not expired.
+If any check fails, the Relayer rejects the request before broadcasting.
+	4.	Relayer broadcasts to Paladin RPC
+	•	If the Paladin network is configured with gasPrice = 0 (default in privacy/enterprise deployments), no gas sponsor is required; the Relayer simply forwards the signed payload.
+	•	If the Paladin network runs with gasPrice ≠ 0, the Relayer must use a gas sponsor wallet to cover the transaction fee when broadcasting.
