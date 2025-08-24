@@ -142,3 +142,45 @@ Facilitate JSON-RPC calls to blockchain nodes.
 Encode/decode smart contract ABI calls.
 
 Interface: JSON-RPC over HTTP/WebSocket.
+
+
+All controllers and endpoints are organized by macro domain (bounded context). Each domain has its own controller(s), request/response models, services, and routes. This enforces clear ownership, isolates business rules, and keeps APIs predictable.
+
+Package pattern: com.swift.sle.<domain>.application
+Examples: com.swift.sle.token.application, com.swift.sle.balance.application, com.swift.sle.bridge.application
+
+Controller naming: <Domain><Action>Controller
+Examples: TokenTransferController, BalanceQueryController, BridgeOperationController
+
+Route base per domain (versioned): /api/v1/<domain>/...
+Examples:
+
+POST /api/v1/token/transfer
+
+POST /api/v1/token/mint
+
+GET /api/v1/balance/{wallet}?asset=NOTO
+
+POST /api/v1/bridge/lock / POST /api/v1/bridge/release
+
+DTOs scoped to the domain: com.swift.sle.<domain>.application.dto
+Examples: TransferRequest, TransferResponse, PrivateBalanceResponse
+
+Data Transfer Objects (DTOs)
+
+What & Why
+DTOs are lightweight objects used to carry data across layers (API ↔ service ↔ client) without exposing internal domain/entities. They:
+
+decouple external API contracts from internal models;
+
+enforce validation at the boundary;
+
+stabilize APIs during internal refactors.
+
+Conventions
+
+Scope DTOs by domain: com.swift.sle.<domain>.application.dto
+
+Suffix with Request / Response.
+
+Immutable where possible (records) and validated with jakarta.validation
