@@ -1,186 +1,31 @@
-Helper Classes
+Service Layer
 
-What/why:
-Helper classes are cross-cutting utilities that encapsulate common technical logic, avoid duplication, and simplify usage of external libraries. They should be stateless and reusable across Services and Controllers.
+Orchestrates business use cases.
 
-13.1 RelayerHelper
+Coordinates between domain entities, repositories, and external systems (e.g., Paladin Relayer).
 
-Purpose: Encapsulates technical operations needed to prepare and submit transactions to the Paladin Relayer API.
+DDD convention: these are Application Services (when they orchestrate) or Domain Services (when they encapsulate domain logic).
 
-Responsibilities:
+DTOs (Data Transfer Objects)
 
-Build and normalize request payloads for /mint and /burn.
+Represent request/response models for APIs.
 
-Attach required headers (Authorization, Idempotency-Key, X-Request-Id).
+Separate external API contract from domain entities.
 
-Handle retries, exponential backoff, and error code mapping.
+DDD convention: DTOs belong to the Application Layer.
 
-Wrap responses into typed DTOs (RelayerResponseDto).
+DAO/Repository Layer
 
-Example (Domain = Relayer):
+Encapsulates persistence logic.
 
-RelayerHelper.buildMintPayload(participantId, method, params, nonce, deadline) → returns standardized JSON body.
+Interfaces are in the Domain Layer, implementations in the Infrastructure Layer.
 
-RelayerHelper.wrapResponse(httpResponse) → maps raw JSON to RelayerResponseDto.
+DDD convention: Repository is a core building block.
 
-13.2 ConfigHelper (Web3 / Chain configuration)
+Entities
 
-Purpose: Centralizes blockchain configuration and Web3 client setup.
+Represent domain objects (e.g., Token, Account, Balance).
 
-Responsibilities:
+Contain attributes and business rules.
 
-Load Paladin/Enterprise RPC URLs, chainIds, gas settings from application.yml or environment.
-
-Provide factory methods to create Web3 clients (Web3j or similar).
-
-Normalize gas model (zero vs sponsor):
-
-If gasPrice = 0: build tx with gasPrice=0, require only gasLimit.
-
-If gasPrice ≠ 0: attach sponsor wallet credentials (via KMS or HSM).
-
-Expose domain constants (e.g., verifying contract address for meta-tx validation).
-
-Example (Domain = Config):
-
-ConfigHelper.getChainConfig("paladin") → { rpcUrl, chainId, gasPriceMode }.
-
-ConfigHelper.createWeb3Client("paladin") → returns a ready Web3j instance bound to the Paladin RPC node.
-
-Best Practices for Helpers
-
-Keep them stateless: no persistence, no session.
-
-Inject via Spring @Component / @Bean so they can be mocked in tests.
-
-Unit test separately (verify payload formatting, config loading).
-
-Never mix business rules (those live in Service) — helpers are purely technical.
-
-
-
-
-#################
-5.1.1.2 SLE Backend Application – Components Implementation
-
-The SLE Backend Application is a Java/Spring Boot service that exposes REST APIs to the frontend and external systems, providing orchestration for blockchain interactions through Paladin Relayer and persistence via the database. It is designed following Domain-Driven Design (DDD) and layered architecture principles.
-
-Subcomponents
-
-SLE Controller (Java/Spring Boot)
-
-Purpose: Entry point for REST API requests. Orchestrates the flow between frontend clients and backend services.
-
-Responsibilities:
-
-Map HTTP requests to application services.
-
-Perform request validation and error handling.
-
-Expose endpoints such as /api/v1/tokens, /api/v1/balances.
-
-Interface: REST (JSON/HTTPS).
-
-SLE Entity (Java/Spring Boot)
-
-Purpose: Represents domain objects aligned with business logic (e.g., Token, Account, Balance).
-
-Responsibilities:
-
-Encapsulate core attributes and behavior of business entities.
-
-Ensure consistency of domain rules within aggregates.
-
-Interface: Used internally by Services and Repositories.
-
-SLE Service (Java/Spring Boot)
-
-Purpose: Implements business use cases.
-
-Responsibilities:
-
-Execute domain logic (e.g., minting, burning, transferring tokens).
-
-Interact with Paladin Relayer for blockchain transactions.
-
-Interact with DAO for persistence.
-
-Interface: Invoked by Controllers.
-
-SLE Helpers (Java/Spring Boot)
-
-Purpose: Provide reusable utilities for Web3 integration, configuration, and common logic.
-
-Responsibilities:
-
-Wrap Web3J calls (transaction encoding/decoding).
-
-Centralize cryptographic or configuration helpers.
-
-Interface: Internal to backend.
-
-SLE DAO/Repository (Java/Spring Boot)
-
-Purpose: Data persistence abstraction.
-
-Responsibilities:
-
-Manage CRUD operations for entities.
-
-Implement repositories for aggregate roots (e.g., NotoAccountRepository).
-
-Interface: JDBC/ORM, interacts with Database.
-
-Web3J (Java Library)
-
-Purpose: Blockchain integration library.
-
-Responsibilities:
-
-Facilitate JSON-RPC calls to blockchain nodes.
-
-Encode/decode smart contract ABI calls.
-
-Interface: JSON-RPC over HTTP/WebSocket.
-
-
-All controllers and endpoints are organized by macro domain (bounded context). Each domain has its own controller(s), request/response models, services, and routes. This enforces clear ownership, isolates business rules, and keeps APIs predictable.
-
-Package pattern: com.swift.sle.<domain>.application
-Examples: com.swift.sle.token.application, com.swift.sle.balance.application, com.swift.sle.bridge.application
-
-Controller naming: <Domain><Action>Controller
-Examples: TokenTransferController, BalanceQueryController, BridgeOperationController
-
-Route base per domain (versioned): /api/v1/<domain>/...
-Examples:
-
-POST /api/v1/token/transfer
-
-POST /api/v1/token/mint
-
-GET /api/v1/balance/{wallet}?asset=NOTO
-
-POST /api/v1/bridge/lock / POST /api/v1/bridge/release
-
-DTOs scoped to the domain: com.swift.sle.<domain>.application.dto
-Examples: TransferRequest, TransferResponse, PrivateBalanceResponse
-
-Data Transfer Objects (DTOs)
-
-What & Why
-DTOs are lightweight objects used to carry data across layers (API ↔ service ↔ client) without exposing internal domain/entities. They:
-
-decouple external API contracts from internal models;
-
-enforce validation at the boundary;
-
-stabilize APIs during internal refactors.
-
-Conventions
-
-Scope DTOs by domain: com.swift.sle.<domain>.application.dto
-
-Suffix with Request / Response.
-
-Immutable where possible (records) and validated with jakarta.validation
+DDD convention: live in the Domain Layer.
