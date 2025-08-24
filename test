@@ -1,7 +1,1 @@
-
-Service Layer
-Coordinates interactions between domain entities, repositories, and external systems. Invoked by controllers, it executes domain logic and communicates with DAOs for data persistence.
-
-A DTO (Data Transfer Object) is a simple data container used to transfer information between layers of the application or across system boundaries (e.g., between the Backend API and the frontend, or between Backend and Relayer).
-	•	Purpose:
-	•	Decouple external API contracts from internal domain models.
+is a simple data container used to transfer information between layers of the application or across system boundaries. It primarily represents request and response payloads for REST endpoints, ensuring a clear contract for external clients. By design, DTOs decouple external API specifications from internal domain models, allowing the system to evolve internally without breaking external integrations.
