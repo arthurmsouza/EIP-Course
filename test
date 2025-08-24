@@ -1,31 +1,7 @@
+
 Service Layer
+Coordinates interactions between domain entities, repositories, and external systems. Invoked by controllers, it executes domain logic and communicates with DAOs for data persistence.
 
-Orchestrates business use cases.
-
-Coordinates between domain entities, repositories, and external systems (e.g., Paladin Relayer).
-
-DDD convention: these are Application Services (when they orchestrate) or Domain Services (when they encapsulate domain logic).
-
-DTOs (Data Transfer Objects)
-
-Represent request/response models for APIs.
-
-Separate external API contract from domain entities.
-
-DDD convention: DTOs belong to the Application Layer.
-
-DAO/Repository Layer
-
-Encapsulates persistence logic.
-
-Interfaces are in the Domain Layer, implementations in the Infrastructure Layer.
-
-DDD convention: Repository is a core building block.
-
-Entities
-
-Represent domain objects (e.g., Token, Account, Balance).
-
-Contain attributes and business rules.
-
-DDD convention: live in the Domain Layer.
+A DTO (Data Transfer Object) is a simple data container used to transfer information between layers of the application or across system boundaries (e.g., between the Backend API and the frontend, or between Backend and Relayer).
+	•	Purpose:
+	•	Decouple external API contracts from internal domain models.
