@@ -1,7 +1,144 @@
-| **Component**          | **Description**                                                                                                                                                                                                                                                                                                 | **Interface**                                                                                                                                                                                           |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Linea Besu L2 Node** | Enterprise-grade Layer 2 node built on Hyperledger Besu, responsible for executing and validating smart contracts within the Linea L2 environment. It accommodates contracts such as **TokenBridge**, **ERC20/721/1155**, and **Message Contracts** to support token transfers, bridging, and interoperability. | Exposes JSON-RPC (HTTP/WebSocket) for transaction submission and contract queries; interacts with SLE Backend via Paladin Relayer; integrates with Issuer Bridge Operator for cross-network operations. |
-| **Paladin Node**       | Privacy-enabled node based on Besu with additional modules for confidential transactions and private state management. It accommodates contracts such as **Noto Contract**, **NotoHookTracker**, and **Notary**, enabling private balances, event tracking, and notarization within privacy groups.             | Exposes JSON-RPC (HTTP/WebSocket) for contract calls and private transactions; provides Privacy Group APIs; accessed via Paladin SDK (used by Paladin Relayer and Issuer Bridge Operator).              |
-| **Component** | **Description**                                                                                                                                                                                                  | **Interface**                                                                                                                                                                             |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Database**  | Centralized persistence layer that stores off-chain data required by the SLE system. It accommodates business records, metadata, transaction history, and any information not stored directly on the blockchain. | Exposes SQL/NoSQL queries depending on implementation (e.g., PostgreSQL, MongoDB). Interacts with the SLE DAO/Repository via JDBC/ORM. Provides read/write access to the SLE Backend API. |
+Helper Classes
+
+What/why:
+Helper classes are cross-cutting utilities that encapsulate common technical logic, avoid duplication, and simplify usage of external libraries. They should be stateless and reusable across Services and Controllers.
+
+13.1 RelayerHelper
+
+Purpose: Encapsulates technical operations needed to prepare and submit transactions to the Paladin Relayer API.
+
+Responsibilities:
+
+Build and normalize request payloads for /mint and /burn.
+
+Attach required headers (Authorization, Idempotency-Key, X-Request-Id).
+
+Handle retries, exponential backoff, and error code mapping.
+
+Wrap responses into typed DTOs (RelayerResponseDto).
+
+Example (Domain = Relayer):
+
+RelayerHelper.buildMintPayload(participantId, method, params, nonce, deadline) → returns standardized JSON body.
+
+RelayerHelper.wrapResponse(httpResponse) → maps raw JSON to RelayerResponseDto.
+
+13.2 ConfigHelper (Web3 / Chain configuration)
+
+Purpose: Centralizes blockchain configuration and Web3 client setup.
+
+Responsibilities:
+
+Load Paladin/Enterprise RPC URLs, chainIds, gas settings from application.yml or environment.
+
+Provide factory methods to create Web3 clients (Web3j or similar).
+
+Normalize gas model (zero vs sponsor):
+
+If gasPrice = 0: build tx with gasPrice=0, require only gasLimit.
+
+If gasPrice ≠ 0: attach sponsor wallet credentials (via KMS or HSM).
+
+Expose domain constants (e.g., verifying contract address for meta-tx validation).
+
+Example (Domain = Config):
+
+ConfigHelper.getChainConfig("paladin") → { rpcUrl, chainId, gasPriceMode }.
+
+ConfigHelper.createWeb3Client("paladin") → returns a ready Web3j instance bound to the Paladin RPC node.
+
+Best Practices for Helpers
+
+Keep them stateless: no persistence, no session.
+
+Inject via Spring @Component / @Bean so they can be mocked in tests.
+
+Unit test separately (verify payload formatting, config loading).
+
+Never mix business rules (those live in Service) — helpers are purely technical.
+
+
+
+
+#################
+5.1.1.2 SLE Backend Application – Components Implementation
+
+The SLE Backend Application is a Java/Spring Boot service that exposes REST APIs to the frontend and external systems, providing orchestration for blockchain interactions through Paladin Relayer and persistence via the database. It is designed following Domain-Driven Design (DDD) and layered architecture principles.
+
+Subcomponents
+
+SLE Controller (Java/Spring Boot)
+
+Purpose: Entry point for REST API requests. Orchestrates the flow between frontend clients and backend services.
+
+Responsibilities:
+
+Map HTTP requests to application services.
+
+Perform request validation and error handling.
+
+Expose endpoints such as /api/v1/tokens, /api/v1/balances.
+
+Interface: REST (JSON/HTTPS).
+
+SLE Entity (Java/Spring Boot)
+
+Purpose: Represents domain objects aligned with business logic (e.g., Token, Account, Balance).
+
+Responsibilities:
+
+Encapsulate core attributes and behavior of business entities.
+
+Ensure consistency of domain rules within aggregates.
+
+Interface: Used internally by Services and Repositories.
+
+SLE Service (Java/Spring Boot)
+
+Purpose: Implements business use cases.
+
+Responsibilities:
+
+Execute domain logic (e.g., minting, burning, transferring tokens).
+
+Interact with Paladin Relayer for blockchain transactions.
+
+Interact with DAO for persistence.
+
+Interface: Invoked by Controllers.
+
+SLE Helpers (Java/Spring Boot)
+
+Purpose: Provide reusable utilities for Web3 integration, configuration, and common logic.
+
+Responsibilities:
+
+Wrap Web3J calls (transaction encoding/decoding).
+
+Centralize cryptographic or configuration helpers.
+
+Interface: Internal to backend.
+
+SLE DAO/Repository (Java/Spring Boot)
+
+Purpose: Data persistence abstraction.
+
+Responsibilities:
+
+Manage CRUD operations for entities.
+
+Implement repositories for aggregate roots (e.g., NotoAccountRepository).
+
+Interface: JDBC/ORM, interacts with Database.
+
+Web3J (Java Library)
+
+Purpose: Blockchain integration library.
+
+Responsibilities:
+
+Facilitate JSON-RPC calls to blockchain nodes.
+
+Encode/decode smart contract ABI calls.
+
+Interface: JSON-RPC over HTTP/WebSocket.
