@@ -1,12 +1,47 @@
-2) Enterprise Backend creates and signs a meta‑transaction, then submits to the Paladin Relayer API (safe channel)
-The Backend builds the EIP‑712 payload (domain + message with nonce/deadline), signs it with the participant’s wallet (or KMS), and sends { payload, userSignature, nonce, deadline } to the Relayer.
+2. Components (Responsibilities & Interfaces)
 
-3.	Relayer pre-check (off-chain ECDSA recover)
-Before paying gas, the Paladin Relayer validates the signature off-chain:
-	•	The recovered address equals the claimed user in the payload.
-	•	The nonce has not been replayed.
-	•	The deadline has not expired.
-If any check fails, the Relayer rejects the request before broadcasting.
-	4.	Relayer broadcasts to Paladin RPC
-	•	If the Paladin network is configured with gasPrice = 0 (default in privacy/enterprise deployments), no gas sponsor is required; the Relayer simply forwards the signed payload.
-	•	If the Paladin network runs with gasPrice ≠ 0, the Relayer must use a gas sponsor wallet to cover the transaction fee when broadcasting.
+2.1 Wallet Service (Enterprise)
+	•	Purpose: Custody users’/participants’ keys (or fetch from KMS) and perform EIP‑712 signing for meta‑transactions.
+	•	Interfaces:
+	•	POST /wallets → create wallet (optional, if not using external custody).
+	•	POST /sign/eip712 → body: {domain, types, message}; returns {signature}.
+	•	Notes: Can proxy to KMS for signing; never exposes private keys.
+
+2.2 SLE Backend API (Enterprise)
+	•	Purpose: Orchestrates business flows; builds meta‑tx payloads; calls Paladin Relayer API.
+	•	Interfaces: Internal RPC/HTTP handlers; outbound to Paladin Relayer:
+	•	POST /relayer/mint
+	•	POST /relayer/burn
+	•	Security: mTLS client cert + JWT/HMAC to Relayer.
+
+2.3 AWS KMS (Enterprise)
+	•	Purpose: HSM‑backed key storage/signing for enterprise accounts and, optionally, gas‑sponsor keys.
+	•	Interfaces: KMS Sign, GetPublicKey; algorithm ECDSA_secp256k1 (or via external plugin).
+
+2.4 RelayerSigner (Enterprise)
+	•	Purpose: Utility service to assemble and serialize transactions; attaches sponsor signature only if gasPrice ≠ 0; RLP encodes and submits to JSON‑RPC.
+	•	Interfaces: POST /tx/build, POST /tx/send.
+	•	Notes: In gasPrice = 0 mode, it forwards the meta‑tx without sponsor signing.
+
+2.5 Paladin Relayer (SLE)
+	•	Purpose: Single bridge‑facing component (edge). Admits requests, validates user EIP‑712 signatures off‑chain, applies quotas, and submits to Paladin RPC.
+	•	Interfaces (external to Enterprise over mTLS):
+	•	POST /v1/mint → {payload, userSignature, nonce, deadline, …}
+	•	POST /v1/burn → {payload, userSignature, nonce, deadline, …}
+	•	GET  /v1/requests/{id} → status, paladinTxHash, receipts.
+	•	Security: mTLS clientAuth, IP allow‑list, JWT/HMAC, replay window (nonce+timestamp), rate‑limit per client DN.
+	•	Persistence: Writes audit records to Database.
+
+2.6 Issuer Bridge Operator (SLE) (only if using the “Trusted Bridge” variant)
+	•	Purpose: Listens to Enterprise on‑chain events and calls Issuer Notary/Relayer.
+	•	If your latest model is Relayer‑only, you can omit this component.
+
+2.7 Paladin RPC Node / Issuer Paladin RPC Node (SLE)
+	•	Purpose: EVM execution for Privacy Groups (Noto + Hooks + Notary wiring).
+	•	Interfaces: JSON‑RPC (eth_sendRawTransaction, eth_call, eth_getTransactionReceipt).
+
+2.8 Linea RPC Node (optional)
+	•	Purpose: If the flow needs L2 interactions or anchoring.
+
+2.9 Database (SLE)
+	•	Purpose: Durable, tamper‑evident audit: {requestId, clientDn, user, nonce, deadline, method, paramsHash, paladinTxHash, status, timestamps
