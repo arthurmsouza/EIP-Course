@@ -23,13 +23,13 @@ The Paladin Relayer Service is implemented as a Node.js/TypeScript microservice.
 
 Solution
 The Relayer has two main functions:
-	•	Bridge Functionality:
+	Bridge Functionality:
 	•	Listens to NotoBridgeContract (Escrow) events on Linea L2 using ethers.js (via query or WebSocket).
 	•	When a public token is locked, the Relayer mints an equivalent Noto private token inside the privacy domain using the Paladin SDK.
 	•	In the reverse direction, when a Noto private token is burned, the Relayer receives a Proof of Burn from the Notary. This proof is then submitted to the NotoBridgeContract on Linea L2, which validates the proof and unlocks the corresponding public tokens.
-	•	Private Balance Indexing:
-	•	The Relayer listens to NotoHooks events that signal changes in private state.
-	•	These events are indexed off-chain to maintain a synchronized balance store per user address, which external applications can query without direct access to the Paladin privacy environment.
+	Private Balance Indexing:
+ PaladiSDK provide Noto balance function (https://github.com/LF-Decentralized-Trust-labs/paladin/commit/53da41b0f7f4349740a02004b5ee5f9f6be46c59) for check current state per address, but this function won't work if you end up with a very large number of UTXOs. For a production solution is recommend indexing events as they happen, and maintaining a live database or other off chain snapshot of balances. 
+	The Relayer listens to NotoHooksTracker events that signal changes in private state, these events are indexed off-chain to maintain a synchronized balance store per user address. 
 
 
 
