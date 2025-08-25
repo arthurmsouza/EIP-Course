@@ -1,3 +1,1 @@
-NotoBridgeContract (Escrow) is deployed on Linea L2 and is used to lock ERC20/3643 public tokens when bridging into Paladin. Upon receiving a valid Proof of Burn confirmation from the Paladin Relayer, it unlocks the equivalent tokens back into the public domain.
 
-TokenBridge Contract and Message Contract are responsible for handling proof submission and synchronizing token states between Ethereum L1 and Linea L2. These contracts are provided and maintained by ConsenSys.
