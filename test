@@ -1,1 +1,16 @@
+Hi [Name/Team],
 
+In addition, please clarify a few points regarding the Validium setup and ensure these are properly included in our documentation:
+	1.	RBAC
+	We need to specify at which layer the access control definition should occur.
+	At the application/API Gateway level?
+	At the smart contract level?
+	Or via an off-chain component that represents this functionality?
+	2.	Validium Operator
+	Please clarify which component should represent the Validium operator.
+	3.	Enterprise Trusted Bridge
+	How is privacy ensured when bridging to L2 with Validium?
+	Once transactions are bridged, how is privacy maintained?
+	Is it possible to enforce RBAC policies for the bridge node?
+	4.	Infrastructure
+	The cloud infrastructure documentation should be updated with the Validium perspective, including nodes and off-chain components.
