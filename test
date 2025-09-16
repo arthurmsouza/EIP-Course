@@ -42,5 +42,66 @@ Middleware can enforce additional operation-level access control (ContractAddres
 Use a cache manager to store JWTs, JWKS, and permissions.
 
 Option 1: Middleware does everything (API Key + JWT + RBAC).
-	•	Option 2: API Gateway manages API Key, Middleware handles JWT + RBAC.
+	sequenceDiagram
+    participant Client
+    participant Middleware
+    participant DB as Database
+    participant Cache
+
+    Client->>Middleware: Send request with API Key + JWT
+    Middleware->>DB: Verify API Key (generator/verifier)
+    Middleware->>Cache: Check cached JWT/JWKS
+    alt JWT not cached or expired
+        Middleware->>DB: Validate JWT, roles, permissions
+        Middleware->>Cache: Store JWT/JWKS with TTL
+    end
+    Middleware->>DB: Enforce allowlist (ContractAddress, WalletAddress)
+    Middleware-->>Client: Return response (authorized or denied)
+
+
+•	Option 2: API Gateway manages API Key, Middleware handles JWT + RBAC.
+sequenceDiagram
+    participant Client
+    participant APIGW as API Gateway
+    participant Middleware
+    participant DB as Database
+    participant Cache
+
+    Client->>APIGW: Send request with API Key
+    APIGW->>APIGW: Verify API Key (issuer/verifier)
+    APIGW->>Middleware: Forward request with JWT
+    Middleware->>Cache: Check cached JWT/JWKS
+    alt JWT not cached or expired
+        Middleware->>DB: Validate JWT, roles, permissions
+        Middleware->>Cache: Store JWT/JWKS with TTL
+    end
+    Middleware->>DB: Enforce allowlist (ContractAddress, WalletAddress)
+    Middleware-->>APIGW: Response (authorized/denied)
+    APIGW-->>Client: Return response
+
 	•	Option 3: API Gateway + IdP manage API Key + JWT, Middleware only enforces RBAC/allowlist.
+sequenceDiagram
+    participant Client
+    participant APIGW as API Gateway
+    participant IdP
+    participant Middleware
+    participant DB as Database
+    participant Cache
+
+    Client->>APIGW: Send request with API Key
+    APIGW->>APIGW: Verify API Key (issuer/verifier)
+    APIGW->>IdP: Request JWT (authentication/authorization)
+    IdP->>APIGW: Return JWT
+    APIGW->>Middleware: Forward request with JWT
+    Middleware->>Cache: Check cached JWT/JWKS
+    alt JWT not cached or expired
+        Middleware->>IdP: Retrieve JWKS
+        Middleware->>DB: Validate roles, permissions
+        Middleware->>Cache: Store JWT/JWKS with TTL
+    end
+    Middleware->>DB: Enforce allowlist (ContractAddress, WalletAddress)
+    Middleware-->>APIGW: Response (authorized/denied)
+    APIGW-->>Client: Return response
+
+
+
