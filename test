@@ -1,107 +1,43 @@
-RBAC Middleware
-
-AS-IS
-	•	Authentication (API Key):
-Works as API Key Mocked (no API Key generation/verification).
-	•	Authorization (JWT/JWKS):
-No JWT token or session manager (no JWT issuer/JWKS verifier).
-Access control is mocked with hard-coded roles (admin/operator) instead of being managed in a database schema.
-No access control is implemented for ContractAddress or WalletAddress (no allowlist).
-
-⸻
-
-TO-BE: Option 1 (Middleware)
-	•	Authentication (API Key):
-Implement an API Key generator and verifier to manage the full API Key lifecycle as part of the database schema.
-	•	Authorization (JWT/JWKS):
-Define a JWT token manager with a configurable TTL (time-to-live).
-Database schema should define Users, Roles, Permissions, etc.
-Consider operation-level access control for ContractAddress, WalletAddress, and other necessary attributes.
-Use a cache manager to store JWTs, JWKS, and permissions.
-
-⸻
-
-TO-BE: Option 2 (API Gateway + Middleware)
-	•	Authentication (API Key):
-API Gateway is responsible for full API Key lifecycle management (issuer/verifier).
-	•	Authorization (JWT/JWKS):
-Middleware defines a JWT token manager with configurable TTL.
-Database schema defines Users, Roles, Permissions, etc.
-Middleware enforces operation-level access control for ContractAddress, WalletAddress, and others.
-Use a cache manager to store JWTs, JWKS, and permissions.
-
-⸻
-
-TO-BE: Option 3 (API Gateway + IdP + Middleware)
-	•	Authentication (API Key):
-API Gateway is responsible for API Key lifecycle management (issuer/verifier).
-	•	Authorization (JWT/JWKS):
-Identity Provider (IdP) is responsible for authentication and authorization via JWT lifecycle automation (issuer + JWKS verifier).
-Minimal custom schema can be supported in the IdP.
-Middleware can enforce additional operation-level access control (ContractAddress, WalletAddress, etc., if necessary).
-Use a cache manager to store JWTs, JWKS, and permissions.
-
-Option 1: Middleware does everything (API Key + JWT + RBAC).
-	sequenceDiagram
-    participant Client
-    participant Middleware
-    participant DB as Database
-    participant Cache
-
-    Client->>Middleware: Send request with API Key + JWT
-    Middleware->>DB: Verify API Key (generator/verifier)
-    Middleware->>Cache: Check cached JWT/JWKS
-    alt JWT not cached or expired
-        Middleware->>DB: Validate JWT, roles, permissions
-        Middleware->>Cache: Store JWT/JWKS with TTL
-    end
-    Middleware->>DB: Enforce allowlist (ContractAddress, WalletAddress)
-    Middleware-->>Client: Return response (authorized or denied)
+“The Backend API delegates transaction submission to an RBAC Middleware that validates JWT/API-key, enforces role/permission and allowlists, performs policy checks, and only then signs/relays the transaction to the network.”
+Minimal architecture & flow
+	1.	Client → Backend API: request to perform action on contract with params (+ Bearer JWT / API key).
+	2.	Backend API → RBAC Middleware (/authorize-and-send):
+	•	Validate token (IdP/JWKS or API-key).
+	•	Evaluate RBAC (role→permission) and allowlists (contract address, function selector, wallet address, chainId, limits).
+	•	Apply policy (rate/nonce limits, quotas, velocity, compliance).
+	•	If allowed, sign (HSM/KMS) or forward to Relayer; submit via RPC.
+	3.	Middleware → Backend API: returns tx hash / receipt (or deny with reason).
+	4.	Backend API → Client: responds with result.
 
 
-•	Option 2: API Gateway manages API Key, Middleware handles JWT + RBAC.
-sequenceDiagram
-    participant Client
-    participant APIGW as API Gateway
-    participant Middleware
-    participant DB as Database
-    participant Cache
+4.3.3 Privacy and RBAC Middleware
 
-    Client->>APIGW: Send request with API Key
-    APIGW->>APIGW: Verify API Key (issuer/verifier)
-    APIGW->>Middleware: Forward request with JWT
-    Middleware->>Cache: Check cached JWT/JWKS
-    alt JWT not cached or expired
-        Middleware->>DB: Validate JWT, roles, permissions
-        Middleware->>Cache: Store JWT/JWKS with TTL
-    end
-    Middleware->>DB: Enforce allowlist (ContractAddress, WalletAddress)
-    Middleware-->>APIGW: Response (authorized/denied)
-    APIGW-->>Client: Return response
+The Privacy and RBAC Middleware provides a secure enforcement layer that governs access to Validium-based off-chain state and orchestrates blockchain transaction execution under strict role-based policies.
 
-	•	Option 3: API Gateway + IdP manage API Key + JWT, Middleware only enforces RBAC/allowlist.
-sequenceDiagram
-    participant Client
-    participant APIGW as API Gateway
-    participant IdP
-    participant Middleware
-    participant DB as Database
-    participant Cache
+Off-chain Privacy and Validium Control
 
-    Client->>APIGW: Send request with API Key
-    APIGW->>APIGW: Verify API Key (issuer/verifier)
-    APIGW->>IdP: Request JWT (authentication/authorization)
-    IdP->>APIGW: Return JWT
-    APIGW->>Middleware: Forward request with JWT
-    Middleware->>Cache: Check cached JWT/JWKS
-    alt JWT not cached or expired
-        Middleware->>IdP: Retrieve JWKS
-        Middleware->>DB: Validate roles, permissions
-        Middleware->>Cache: Store JWT/JWKS with TTL
-    end
-    Middleware->>DB: Enforce allowlist (ContractAddress, WalletAddress)
-    Middleware-->>APIGW: Response (authorized/denied)
-    APIGW-->>Client: Return response
+In this architecture, sensitive data and transaction states are stored off-chain within Validium private storage, ensuring that only zero-knowledge proofs are posted to Layer 1. This prevents exposure of confidential business information while guaranteeing verifiability through cryptographic proofs.
+	•	On-chain: only validity proofs and hashes are committed.
+	•	Off-chain: transaction intents, balances, and settlement details remain private, queryable only by authorized participants.
+	•	Logs and calldata: enriched human-readable details are made available in event logs, minimizing on-chain storage costs and preserving confidentiality.
 
+RBAC Enforcement
 
+Access to Validium RPC endpoints and private storage is gated by Role-Based Access Control (RBAC). Each request is validated against policies that define:
+	•	Who (user identity, API key, JWT claims).
+	•	What (contract, function selector, resource scope).
+	•	How (permissions, quotas, transaction type, nonce safety).
 
+This ensures that only authorized entities can prepare and submit blockchain transactions or query confidential off-chain state.
+
+Prototype vs Production
+	•	Prototype Phase: RBAC policies are mocked within the middleware to validate functional flows without requiring full identity infrastructure. This enables rapid iteration and integration testing.
+	•	Production Phase: RBAC is integrated with an Identity Provider (IdP) for fine-grained authorization and an API Gateway for authentication. External users authenticate via credentials; JWT tokens are issued and validated against RBAC policies before any transaction is processed.
+
+Delegated Transaction Model
+
+The Backend API does not broadcast blockchain transactions directly. Instead, it delegates transaction preparation and submission to the RBAC Middleware:
+	1.	Prepare: Business logic in the backoffice assembles the transaction intent (using EIP-712 typed structured data).
+	2.	Authorize: Middleware validates intent against RBAC rules, allowlists, and quotas.
+	3.	Sign/Relay: If authorized, the Middleware signs the transaction (via KMS/HSM) or relays it on behalf of the user.
+	4.	Execute: Settlement occurs on-chain, with confidentiality preserved off-chain.
