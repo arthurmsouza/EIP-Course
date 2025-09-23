@@ -41,3 +41,55 @@ The Backend API does not broadcast blockchain transactions directly. Instead, it
 	2.	Authorize: Middleware validates intent against RBAC rules, allowlists, and quotas.
 	3.	Sign/Relay: If authorized, the Middleware signs the transaction (via KMS/HSM) or relays it on behalf of the user.
 	4.	Execute: Settlement occurs on-chain, with confidentiality preserved off-chain.
+EIP-1159 (Ethereum Improvement Proposal 1159)
+
+Also known as: London Hard Fork / Fee Market Change / “Base Fee” model
+	•	Introduced in August 2021 with the London upgrade.
+	•	Changed how transaction fees (gas fees) are calculated on Ethereum.
+
+Before (old model):
+	•	Users set a gas price (bid).
+	•	Miners picked transactions with the highest bids → fee auction.
+	•	Problem: fees were volatile, spikes during congestion.
+
+After (EIP-1159):
+	•	Transactions now include:
+	•	Base Fee: algorithmically set by the protocol, changes block to block depending on network demand.
+	•	Priority Fee (tip): optional extra you pay to incentivize miners/validators.
+	•	Max Fee: maximum total you are willing to pay.
+
+Benefits:
+	•	More predictable gas prices.
+	•	Better UX for wallets/dapps (no guessing fees).
+	•	Base fee is burned → reduces ETH supply (deflationary pressure).
+
+⸻
+
+🔹 EIP-712
+
+Typed Structured Data Hashing and Signing
+	•	Standard for signing structured, human-readable messages off-chain.
+	•	Instead of signing a raw transaction (binary blob), users sign typed data with clear fields.
+
+Example use cases:
+	•	Permit approvals (EIP-2612): sign a message to allow spending tokens, without sending an on-chain approval tx.
+	•	Meta-transactions: user signs an intent, a relayer submits it on-chain.
+	•	Off-chain agreements: swaps, orders, settlements — validated on-chain later.
+
+Benefits:
+	•	Prevents phishing & replay attacks (domain separator + nonce).
+	•	Messages are human-readable (wallet shows “You allow 100 DAI to be spent by 0x…”).
+	•	Decouples signing from execution → gasless UX, batch transactions, Validium off-chain intents (like in your setup).
+
+⸻
+
+🔹 TL;DR
+	•	EIP-1159 → gas fee market reform (base fee, tip, fee burning).
+	•	EIP-712 → standard for signing structured, human-readable off-chain messages (intents, permits).
+
+⸻
+
+⚡ Quick analogy:
+	•	EIP-1159 = how you pay the highway toll (fairer and predictable).
+	•	EIP-712 = how you sign a contract before driving (clear, structured, verifiable intent).
+
