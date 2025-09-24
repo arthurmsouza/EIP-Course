@@ -209,4 +209,14 @@ Onboarding (new bank)
 	•	Store mapping in DB: bank_id ↔ oidc_client_id ↔ scopes/roles.
 	•	(Optional, strong) Enable MTLS-bound tokens at IdP so the JWT is tied to the bank cert.
 
+API Gateway
+The API Gateway acts as the secure entry point for all requests, enforcing mTLS for mutual authentication, validating API keys, and applying rate limiting to protect against abuse. It provides identification and traffic control for each tenant, while also enabling simple service integration by routing validated requests to the RBAC Middleware and downstream services.
 
+Identity Provider (IdP)
+The Identity Provider (IdP) implements OpenID Connect (OIDC) on top of the OAuth2 protocol, enabling strong authentication and standardized token issuance. It manages roles, claims, and allowlists, providing signed JWTs that the RBAC Middleware can verify to enforce fine-grained authorization across APIs and smart contract operations.
+
+Prototype Phase
+In the prototype phase, RBAC policies are mocked within the middleware to validate functional flows without requiring a full identity infrastructure. The middleware is also responsible for sending blockchain transactions (received from the Mock Backoffice Application) to the Validium RPC Node and for covering the gas fees. This setup enables rapid iteration, testing, and integration of the solution.
+
+Production Phase
+In the production phase, the RBAC middleware should be integrated with an Identity Provider (IdP) to enable fine-grained authorization. OpenConnect ID should be configured so that JWT tokens issued by the IdP are validated against RBAC policies before any transaction is processed. Responsibility for signing transactions and paying gas fees should be shifted to the RelayerSigner component, which will handle these functions.
