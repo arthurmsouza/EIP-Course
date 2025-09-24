@@ -86,3 +86,106 @@ Pattern A (preferred — what you’re already designing)
 	•	RBAC /token returns Keycloak access_token (JWT) to the bank.
 	•	Bank uses that JWT + mTLS + API key for API calls.
 
+
+
+====
+Got it—here’s the exact flow you described, clean and precise.
+
+Flow A — RBAC issues JWT on behalf of the bank
+
+Preconditions / Mappings
+	•	api_key_id ↔ tenant_id ↔ oidc_client_id ↔ secret_ref (in DB)
+	•	secret_ref points to Secret Manager entry for the OIDC client secret
+	•	Cert fingerprint for the bank is registered (for mTLS)
+
+Sequence (Mermaid)
+
+sequenceDiagram
+    participant Bank as Bank Backend
+    participant GW as API Gateway
+    participant RBAC as RBAC Middleware
+    participant SM as Secret Manager
+    participant IdP as IdP (OIDC)
+
+    Note over Bank: 1) Get JWT via RBAC
+    Bank->>GW: POST /auth/jwt (mTLS) <br/>Headers: x-api-key
+    GW->>GW: Verify mTLS client cert ✅<br/>Verify API key ✅ (get api_key_id)
+    GW->>RBAC: Forward request <br/>Headers: X-Api-Key-Id, X-Client-Cert-Fingerprint
+
+    RBAC->>RBAC: Lookup api_key_id → (tenant, oidc_client_id, secret_ref)
+    RBAC->>SM: Get client_secret (secret_ref)
+    SM-->>RBAC: client_secret
+    RBAC->>IdP: POST /oauth2/token (client_credentials)<br/>client_id=oidc_client_id&client_secret
+    IdP-->>RBAC: { access_token (JWT), expires_in }
+    RBAC-->>GW: { access_token (JWT) }
+    GW-->>Bank: { access_token (JWT) }
+
+    Note over Bank: 2) Call protected API
+    Bank->>GW: POST /settlement/v1/... (mTLS)<br/>Headers: x-api-key, Authorization: Bearer JWT
+    GW->>GW: Verify mTLS ✅, verify API key ✅, rate-limit/log
+    GW->>RBAC: Forward request + JWT<br/>Headers: X-Api-Key-Id, X-Client-Cert-Fingerprint
+    RBAC->>RBAC: Verify JWT (JWKS cache), resolve tenant, enforce RBAC/allowlists
+    RBAC-->>GW: 200/401/403/429/5xx
+    GW-->>Bank: Response
+
+Endpoints & Headers
+
+1) Get JWT (Bank → RBAC via Gateway)
+
+POST /auth/jwt
+x-api-key: <BANK_API_KEY>
+# mTLS client cert presented at TLS layer
+Body: { "scope": "settlement.write" }   # optional
+
+Gateway → RBAC (forwarded):
+
+X-Api-Key-Id: <api_key_id>
+X-Client-Cert-Fingerprint: sha256:<...>
+X-Request-Id: <uuid>
+
+RBAC → IdP (client credentials):
+
+POST /oauth2/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials&
+client_id=<oidc_client_id>&
+client_secret=<resolved_from_secret_manager>&
+scope=settlement.write
+
+RBAC → Bank (via Gateway):
+
+{
+  "access_token": "<JWT>",
+  "token_type": "Bearer",
+  "expires_in": 600
+}
+
+2) Protected API call
+
+POST /settlement/v1/submit
+Authorization: Bearer <JWT>
+x-api-key: <BANK_API_KEY>
+# mTLS client cert at TLS
+
+What each component does
+	•	API Gateway
+	•	Verifies mTLS and API key; resolves/attaches X-Api-Key-Id
+	•	Rate limits, quotas, logging; forwards fingerprint header
+	•	RBAC Middleware
+	•	For /auth/jwt: DB lookup → fetch client_secret from Secret Manager → OIDC token request → return JWT
+	•	For protected APIs: verify JWT (JWKS cache), map tenant, enforce RBAC + allowlists (wallets/contracts/methods), audit
+	•	Secret Manager
+	•	Stores OIDC client_secret; returns on-demand (never logs it)
+	•	IdP (OIDC)
+	•	Issues short-lived access tokens for client_credentials
+
+Security & Ops tips (for this model)
+	•	Do not expose or log client_secret; only RBAC reads from Secret Manager.
+	•	Cache the JWT per tenant until expiry; proactively refresh on 80–90% TTL.
+	•	Enable CRL/OCSP on Gateway for client-cert revocation.
+	•	Use mTLS-bound tokens (RFC 8705) if your IdP supports it (extra strong binding).
+	•	Rotate: API keys, client secrets; monitor token issuance rates (abuse detection).
+	•	In RBAC, verify JWT claims: iss, aud, exp, nbf, scope/roles, sub.
+
+If you want, I can tailor the headers and config for your stack (e.g., Kong, AWS API Gateway, or NGINX + Keycloak/Okta), including example plugin settings and JWKS caching code.
