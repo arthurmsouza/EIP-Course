@@ -189,3 +189,24 @@ Security & Ops tips (for this model)
 	•	In RBAC, verify JWT claims: iss, aud, exp, nbf, scope/roles, sub.
 
 If you want, I can tailor the headers and config for your stack (e.g., Kong, AWS API Gateway, or NGINX + Keycloak/Okta), including example plugin settings and JWKS caching code.
+
+Onboarding (new bank)
+	1.	PKI / mTLS
+
+	•	Platform CA issues client certificate for the bank (or signs bank CSR).
+	•	Distribute: bank-client.crt + bank-client.key (to bank) and Root/Intermediate CA (to both sides).
+	•	Register the bank cert thumbprint (SHA-256) in your tenant table.
+
+	2.	API Key (Gateway)
+
+	•	Create API key in the API Gateway; attach usage plan (rate/quotas) and tenant tag.
+	•	Store mapping in DB: bank_id ↔ api_key_id ↔ cert_thumbprint.
+
+	3.	OIDC Client (IdP)
+
+	•	Create OIDC client (grant: client_credentials for system-to-system).
+	•	Get client_id/client_secret; assign scopes/roles.
+	•	Store mapping in DB: bank_id ↔ oidc_client_id ↔ scopes/roles.
+	•	(Optional, strong) Enable MTLS-bound tokens at IdP so the JWT is tied to the bank cert.
+
+
