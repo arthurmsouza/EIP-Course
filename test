@@ -220,3 +220,9 @@ In the prototype phase, RBAC policies are mocked within the middleware to valida
 
 Production Phase
 In the production phase, the RBAC middleware should be integrated with an Identity Provider (IdP) to enable fine-grained authorization. OpenConnect ID should be configured so that JWT tokens issued by the IdP are validated against RBAC policies before any transaction is processed. Responsibility for signing transactions and paying gas fees should be shifted to the RelayerSigner component, which will handle these functions.
+
+mTLS + PKI – The CA issues a client certificate and sends it to the bank.
+	2.	API Key – An API key is generated in the API Gateway and provided to the bank.
+	3.	OIDC Client – The IdP creates a client_id and client_secret, mapped in the DB with the api_key_id.
+	4.	JWT Retrieval – The bank calls RBAC Middleware with API key + client certificate → Gateway verifies them → RBAC fetches secret from Secret Manager and obtains a JWT from the IdP.
+	5.	Protected API Access – The bank calls APIs using API key + client certificate + JWT.
