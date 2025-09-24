@@ -21,3 +21,68 @@ Bridge from Swift SLE to Enterprise
 	8.	The RBAC Middleware validates the burn, generates a proof of burn, and returns it to the Issuer Bridge Operator.
 	9.	The Issuer Bridge Operator sends the validated proof back to the Enterprise TokenBridge Contract.
 	10.	The TokenBridge Contract releases the locked tokens to the specified address on the Enterprise Network.
+
+------
+Generate PKI client cert (bank → gets installed on their machine/app).
+	2.	Create API key in API Gateway (send to bank).
+	3.	Create Keycloak client_id/secret (send to bank).
+	4.	Bank calls OIDC → get JWT → call API with mTLS + API key + JWT.
+
+
+Bank ↔ API Gateway: mTLS + API Key (+ JWT you issue via RBAC broker endpoint)
+	•	API Gateway ↔ RBAC: private (VPC Link)
+	•	RBAC ↔ Keycloak: internal only (HTTPS), RBAC holds the client secrets
+
+Onboarding steps (day-1 for a new bank)
+
+1) PKI + Gateway
+	1.	Issue client cert for the bank (or sign their CSR).
+	2.	Add your CA to API Gateway mTLS truststore (S3 PEM).
+	3.	Create API Key (bankX-prod) + Usage Plan; require on routes.
+	4.	Keep Gateway JWT Authorizer enabled (we’ll feed it a Keycloak token).
+
+2) Keycloak (internal only)
+	1.	Create client: bankX-api-client (OIDC, confidential; service accounts ON).
+	2.	Assign roles/scopes (bridge:deposit, etc.).
+	3.	Add mappers:
+	•	aud = my-enterprise-api
+	•	org_id = bankX
+	•	include roles in token
+	4.	Copy client_secret. Do NOT share with bank.
+
+3) RBAC DB (tenant & allowlists)
+	•	Map cert subject ⇄ org_id=bankX
+	•	Map API key id ⇄ org_id=bankX
+	•	Seed allowlists (wallets, contracts, function_sigs).
+
+4) RBAC exposes a /token endpoint (Token Broker)
+	•	Bank does not talk to Keycloak.
+	•	Bank calls RBAC /token over Gateway with mTLS + API key.
+	•	RBAC authenticates bank (mTLS+API key), finds org_id, looks up bank’s Keycloak client creds, calls Keycloak token endpoint (client_credentials), returns the access_token (JWT) to the bank.
+5) Bank calls your real APIs
+Gateway validates:
+	•	mTLS client cert ✅
+	•	x-api-key usage plan ✅
+	•	JWT (issuer/audience/signature) via JWKS ✅
+
+RBAC Middleware (on the API path) then:
+	•	Parses JWT → org_id, roles/scopes
+	•	Enforces allowlists (wallet/contract/function)
+	•	Proceeds with business flow
+
+Bank → Gateway (/token): mTLS + API key
+	2.	Gateway → RBAC (/token): pass through
+	3.	RBAC → Keycloak: client_credentials with bankX-api-client
+	4.	Keycloak → RBAC: returns JWT (aud=my-enterprise-api, org=bankX)
+	5.	RBAC → Bank: returns JWT
+	6.	Bank → Gateway (/bridge/deposit): mTLS + API key + Bearer JWT
+	7.	Gateway: validates JWT (JWKS) + API key; forwards
+	8.	RBAC: enforces RBAC/allowlists; executes
+
+
+Pattern A (preferred — what you’re already designing)
+	•	Partner → RBAC: mTLS + API key (no Keycloak secret).
+	•	RBAC → Keycloak: uses stored client_id/secret per bank (in Secrets Manager/Vault).
+	•	RBAC /token returns Keycloak access_token (JWT) to the bank.
+	•	Bank uses that JWT + mTLS + API key for API calls.
+
