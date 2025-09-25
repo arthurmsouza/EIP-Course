@@ -226,3 +226,30 @@ mTLS + PKI – The CA issues a client certificate and sends it to the bank.
 	3.	OIDC Client – The IdP creates a client_id and client_secret, mapped in the DB with the api_key_id.
 	4.	JWT Retrieval – The bank calls RBAC Middleware with API key + client certificate → Gateway verifies them → RBAC fetches secret from Secret Manager and obtains a JWT from the IdP.
 	5.	Protected API Access – The bank calls APIs using API key + client certificate + JWT.
+
+RBAC ensures that the off-chain state is accessible only to authorized parties and should be enforced at the API layer, which sits between the application services and the Validium Swift node RPC.
+
+When external users connect via the API, they should be identified using the API key provided by the API Gateway. Communication is secured through mTLS/PKI, where the API Gateway verifies the client certificate. The Identity Provider (IdP), configured with OpenID Connect (OIDC), provides fine-grained identity and authorization by issuing JWT tokens that are validated against RBAC policies.
+
+sequenceDiagram
+    participant CA as Certificate Authority (CA)
+    participant GW as API Gateway
+    participant IdP as IdP / OIDC
+    participant DB as Database
+    participant RBAC as RBAC Middleware
+    participant Bank as Bank
+
+    Note over Bank,CA: Step 1 - mTLS + PKI
+    CA->>Bank: Issue client certificate (X.509)
+    Bank-->>CA: Stores cert & private key
+
+    Note over Bank,GW: Step 2 - API Key
+    GW->>Bank: Generate & provide API key
+    GW->>DB: Store api_key_id mapping
+
+    Note over Bank,IdP: Step 3 - OIDC Client
+    IdP->>RBAC: Create client_id + secret
+    RBAC->>DB: Map (api_key_id, client_id, client_secret_ref)
+    IdP-->>Bank: Provide client_id + secret
+
+
