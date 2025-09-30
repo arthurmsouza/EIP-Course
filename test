@@ -1,6 +1,85 @@
 
 RBAC Application
 
+
+#RBAC MIddleware Drive automatic page redirect without OAuth2_proxy client
+
+sequenceDiagram
+    autonumber
+    participant CA as Certificate Authority (Root/Intermediate)
+    participant U as User (Browser w/ Client Cert)
+    participant N as NGINX (Edge mTLS Proxy)
+    participant P as Portal SDL Frontend (app.sua-app.com)
+    participant R as RBAC Middleware (api.sua-app.com)
+    participant K as Keycloak (login.sua-idp.com)
+    participant S as Session Store (Redis)
+
+    %% ---------------- ONE-TIME ENROLLMENT (PKI) ----------------
+    U->>CA: Submit CSR (generate keypair locally, send CSR)
+    CA-->>U: Issue client certificate (User.crt / .p12)
+    note over U,CA: User installs cert+key in the browser/OS keychain
+
+    %% ---------------- PORTAL ENTRY (mTLS @ EDGE) ----------------
+    U->>N: TLS handshake + present client cert
+    N-->>U: TLS established if cert valid (verify chain+CRL/OCSP)
+    note over U,N: mTLS gate passed → request forwarded to Portal SDL
+
+    U->>P: GET / (initial page load, static assets via NGINX)
+    P-->>U: 200 HTML/JS (Portal bootstraps & calls RBAC to check session)
+
+    %% ---------------- AUTH GUARD (RBAC REDIRECT TO KEYCLOAK) ----------------
+    U->>R: GET /session/check (no cookie or invalid)
+    R-->>U: 302 Redirect → K /realms/{realm}/protocol/openid-connect/auth<br/>?client_id=portal-sdl&response_type=code&scope=openid%20profile%20email&redirect_uri=https%3A%2F%2Fapp.sua-app.com%2Foidc%2Fcallback&state=origURL&code_challenge=...&code_challenge_method=S256
+
+    %% ---------------- KEYCLOAK LOGIN ----------------
+    U->>K: GET /auth (OIDC authorize)
+    K-->>U: Login page (username/password, MFA, etc.)
+    U->>K: Submit credentials (and MFA if any)
+    K-->>U: 302 → https://app.sua-app.com/oidc/callback?code=...&state=origURL
+
+    %% ---------------- CALLBACK + TOKEN EXCHANGE ----------------
+    U->>N: GET /oidc/callback?code=...&state=...
+    N->>R: Proxy /oidc/callback (preserve headers)
+    R->>K: POST /token (code → tokens, using client_secret if confidential)
+    K-->>R: 200 { access_token, refresh_token, id_token, expires_in }
+
+    %% ---------------- SESSION CREATION ----------------
+    R->>S: SET session:{sid} = { sub, roles, tokens, expiry }
+    S-->>R: OK
+    R-->>U: Set-Cookie: rbac_session=SID; HttpOnly; Secure; SameSite=Lax
+    R-->>U: 302 → state.origURL (return to originally requested page)
+
+    %% ---------------- AUTHENTICATED USE (SUBSEQUENT CALLS) ----------------
+    U->>P: GET / (now with rbac_session cookie)
+    P-->>U: 200 (app shell)
+    U->>R: GET /api/transfer (cookie: rbac_session=SID)
+    R->>S: GET session:{sid}
+    S-->>R: { sub, roles, tokens (or cached claims) }
+    R->>R: Validate session & RBAC (roles/claims/tenant)
+    R-->>U: 200 OK (or 403 if not authorized)
+
+    %% ---------------- TOKEN REFRESH (WHEN NEEDED) ----------------
+    R->>K: POST /token (grant_type=refresh_token)
+    K-->>R: 200 { new access_token, refresh_token }
+    R->>S: UPDATE session:{sid} tokens/expiry
+    S-->>R: OK
+
+
+mTLS is enforced only at NGINX (edge). User auth still uses OIDC via Keycloak.
+
+The Portal never handles tokens directly; RBAC does the code exchange, stores tokens/claims in Redis, and sets a Secure+HttpOnly session cookie.
+
+Use PKCE if the RBAC callback ever runs in a public context; otherwise make the Keycloak client confidential with a client secret.
+
+Add allowlists to avoid loops: /oidc/callback, /health, static assets, etc.
+
+
+
+
+
+
+#Logout
+
 sequenceDiagram
     autonumber
     participant U as User (Browser)
