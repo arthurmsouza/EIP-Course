@@ -25,13 +25,12 @@ sequenceDiagram
         I-->>U: TLS established
     else Failed
         I-->>U: 401 mTLS required
-        return
     end
 
     %% 2) Initial access to Dashboard
     U->>I: GET /app
-    I->>F: Proxy /app (but protected by backend auth)
-    F-->>U: HTML/JS (SPA loads but still needs authentication)
+    I->>F: Proxy /app (protected)
+    F-->>U: HTML/JS (SPA loads but needs auth)
 
     %% 3) SPA calls Backend for login
     U->>I: POST /backend/login
@@ -42,33 +41,33 @@ sequenceDiagram
     R-->>U: 302 → K:/authorize?client_id=rbac&redirect_uri=R:/callback
 
     %% 5) Browser interacts with Keycloak
-    U->>K: Login (user enters credentials/MFA)
+    U->>K: Login (credentials/MFA)
     K-->>U: 302 → R:/callback?code=AUTH_CODE
     U->>R: GET /callback?code=AUTH_CODE
 
     %% 6) RBAC exchanges AUTH_CODE for tokens with Keycloak
-    R->>K: POST /token (grant_type=authorization_code, code=AUTH_CODE)
+    R->>K: POST /token (authorization_code)
     K-->>R: {access_token (JWT), id_token, refresh_token}
-    R->>B: {access_token, refresh_token, claims}   %% returns to Backend
+    R->>B: {access_token, refresh_token, claims}
 
     %% 7) SDL Backend creates internal session
-    B->>B: Create session_id=abc123 → {tokens, claims} in Redis
+    B->>B: Create session_id=abc123 → {tokens, claims} (Redis)
     B-->>U: 200 { session_id: "abc123" }
     note over U,B: Browser never sees the JWT, only a session_id
 
     %% 8) User accesses the Dashboard
-    U->>I: GET /app (SPA runs authenticated)
+    U->>I: GET /app (now authenticated)
     I->>F: GET /app
-    F-->>U: Dashboard (JS calls Backend APIs)
+    F-->>U: Dashboard
 
-    %% 9) Business request (e.g. transfer)
+    %% 9) Business request (e.g., transfer)
     U->>I: POST /backend/transfer
           X-Session-Id: abc123
     I->>B: /transfer
-    B->>B: Resolve session_id=abc123 → {access_token}
+    B->>B: Resolve session_id → {access_token}
     B->>R: POST /api/transfer
           Authorization: Bearer <access_token>
-    R->>R: Validate JWT (Keycloak JWKS), apply RBAC policies
+    R->>R: Validate JWT (Keycloak JWKS) & apply RBAC
     alt Authorized
         R-->>B: 200 {result}
         B-->>U: 200 {result}
@@ -77,13 +76,22 @@ sequenceDiagram
         B-->>U: 403 Forbidden
     end
 
-    %% 10) Token refresh (invisible to Browser)
+    %% 10) Token refresh (server-side)
     B->>R: POST /token (refresh_token)
-    R->>K: /token (grant_type=refresh_token)
+    R->>K: /token (refresh_token)
     K-->>R: {new_access_token}
     R-->>B: {new_access_token}
     B->>B: Update session abc123
 
+
+
+Highlights
+	•	CA + mTLS → ensures device identity before login.
+	•	RBAC Middleware is the only OIDC Client talking to Keycloak.
+	•	SDL Backend never talks to Keycloak — it only delegates to RBAC.
+	•	Browser never gets the JWT, it only receives a session_id.
+	•	Backend injects the JWT when calling RBAC (Authorization: Bearer <access_token>).
+	•	RBAC Middleware validates the JWT and applies RBAC policies.
 
 
 
