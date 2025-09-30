@@ -61,12 +61,10 @@ sequenceDiagram
     F-->>U: Dashboard
 
     %% 9) Business request (e.g., transfer)
-    U->>I: POST /backend/transfer
-          X-Session-Id: abc123
+    U->>I: POST /backend/transfer\nX-Session-Id: abc123
     I->>B: /transfer
     B->>B: Resolve session_id → {access_token}
-    B->>R: POST /api/transfer
-          Authorization: Bearer <access_token>
+    B->>R: POST /api/transfer\nAuthorization: Bearer <access_token>
     R->>R: Validate JWT (Keycloak JWKS) & apply RBAC
     alt Authorized
         R-->>B: 200 {result}
@@ -82,7 +80,6 @@ sequenceDiagram
     K-->>R: {new_access_token}
     R-->>B: {new_access_token}
     B->>B: Update session abc123
-
 
 
 Highlights
