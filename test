@@ -1,4 +1,27 @@
 
+Database segregation by Role + Row-Level Security (RLS)
+
+Roles
+	•	Admin — Read/write any data in SDL; can also register a new participant (organization).
+	•	Operator (participants/banks) — Read/write data belonging to your own organization in SDL.
+	•	Auditor — Read-only access to data belonging to your own organization in SDL.
+
+Onboarding (new organization)
+	•	Organization name
+	•	BIC (tenant_id)
+	•	Email
+	•	Temporary password
+	•	Role (auditor/operator)
+	•	Whitelist (wallet address / allow list)
+
+Database schema (top-level entities)
+	•	Organization
+	•	User
+	•	Permission (Allowlist)
+	•	Transaction
+
+
+
 RBAC Application
 
 option JWT request
