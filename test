@@ -4,11 +4,13 @@ erDiagram
     ORGANIZATION ||--o{ TRANSACTION : "owns"
 
     USER ||--o{ TRANSACTION : "created_by"
+    USER ||--o{ PERMISSION_ALLOWLIST : "created_by"
 
     ORGANIZATION {
-      uuid id PK  "tenant_id"
+      uuid id PK
       string name
-      string bic          
+      string bic          "tenant_id"
+      uuid created_by     "-> USER.id (admin)"
       datetime created_at
       datetime updated_at
     }
@@ -19,6 +21,7 @@ erDiagram
       string email
       string role_id      "Keycloak role id or name"
       boolean is_active
+      uuid created_by     "-> USER.id (admin)"
       datetime created_at
       datetime updated_at
     }
@@ -26,6 +29,7 @@ erDiagram
     PERMISSION_ALLOWLIST {
       uuid id PK
       uuid org_id         "-> ORGANIZATION.id"
+      uuid created_by     "-> USER.id"
       string wallet_address
       string label
       boolean active
