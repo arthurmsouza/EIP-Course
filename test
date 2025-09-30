@@ -1,4 +1,5 @@
 
+
 Database segregation by Role + Row-Level Security (RLS)
 
 Roles
@@ -20,7 +21,95 @@ Database schema (top-level entities)
 	•	Permission (Allowlist)
 	•	Transaction
 
+How RBAC + RLS work together (short intro)
 
+The RBAC Middleware authenticates the caller (OIDC, mTLS, etc.), resolves the tenant (e.g., by BIC) and the user’s roles (admin/operator/auditor), and then opens a PostgreSQL connection scoped to that tenant.
+At the start of each request, the middleware sets session variables, for example:
+	•	SET LOCAL app.tenant_id = '<org_uuid>';
+	•	SET LOCAL app.user_id = '<user_uuid>';
+	•	SET LOCAL app.roles = 'admin,operator';
+
+Each table has RLS enabled with policies that read these session values via current_setting('app.tenant_id', true) and allow or deny operations:
+	•	Admin: full CRUD for the tenant (and, optionally, a special platform_admin can create organizations).
+	•	Operator: CRUD only within the tenant; writes may be restricted (e.g., transactions must target a wallet on the tenant’s allowlist).
+	•	Auditor: SELECT-only within the tenant.
+
+Because the database enforces RLS, even if an application bug appears, cross-tenant leakage is blocked at the data layer.
+
+Database schema 
+
+erDiagram
+    ORGANIZATION ||--o{ USER : "has many"
+    ORGANIZATION ||--o{ PERMISSION_ALLOWLIST : "defines"
+    ORGANIZATION ||--o{ TRANSACTION : "owns"
+
+    USER ||--o{ TRANSACTION : "created_by"
+    USER }o--o{ ROLE : "has (scoped to org)"
+    ROLE ||--o{ ROLE_PERMISSION : "grants"
+
+    ORGANIZATION {
+      uuid id PK "tenant_id"
+      string name
+      string bic UNIQUE  
+      timestamptz created_at
+      timestamptz updated_at
+    }
+
+    USER {
+      uuid id PK
+      uuid org_id FK "-> ORGANIZATION.id"
+      string email UNIQUE
+      string password_hash
+      boolean is_active
+      timestamptz created_at
+      timestamptz updated_at
+    }
+
+    ROLE {
+      uuid id PK
+      string name  "admin | operator | auditor | platform_admin"
+    }
+
+    USER_ROLE {
+      uuid user_id FK "-> USER.id"
+      uuid role_id FK "-> ROLE.id"
+      uuid org_id  FK "-> ORGANIZATION.id"
+      PK "user_id, role_id, org_id"
+    }
+
+    ROLE_PERMISSION {
+      uuid role_id FK "-> ROLE.id"
+      text permission  "e.g., tx:create, tx:read, allowlist:write"
+      PK "role_id, permission"
+    }
+
+    PERMISSION_ALLOWLIST {
+      uuid id PK
+      uuid org_id FK "-> ORGANIZATION.id"
+      text wallet_address
+      text label
+      boolean active
+      timestamptz created_at
+      UNIQUE "org_id, wallet_address"
+    }
+
+    TRANSACTION {
+      uuid id PK
+      uuid org_id FK "-> ORGANIZATION.id"
+      uuid created_by FK "-> USER.id"
+      text to_wallet
+      numeric amount
+      jsonb payload
+      text status        "draft|submitted|confirmed|failed"
+      timestamptz created_Flow summary
+	1.	Caller authenticates → RBAC Middleware resolves tenant & roles.
+	2.	RBAC Middleware sets app.tenant_id + app.roles on the DB session/transaction.
+	3.	RLS policies evaluate those values and enforce data access per tenant/role.
+	4.	Other microservices can delegate all authorization to RBAC by using its DB session/pool or by calling RBAC’s APIs.
+
+
+
+=======
 
 RBAC Application
 
