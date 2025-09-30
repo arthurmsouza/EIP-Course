@@ -1,6 +1,53 @@
 
 RBAC Application
 
+option JWT request
+
+sequenceDiagram
+    autonumber
+    participant U as Browser (SPA)
+    participant B as SDL Backend (BFF + Session Store)
+    participant R as RBAC Middleware (OIDC Client + API)
+    participant K as Keycloak (IdP)
+
+    %% 1) Login pelo Backend (delegado ao RBAC)
+    U->>B: POST /login (usuário envia user/pass via HTTPS)
+    B->>R: POST /login (proxy para RBAC)
+    R->>K: /authorize + /token
+    K-->>R: {access_token, refresh_token}
+    R-->>B: {access_token, refresh_token}
+    B->>B: Armazena {tokens, claims} no Session Store
+    B-->>U: 200 { session_id: "abc123" }
+    note over U,B: Browser nunca recebe JWT, só session_id
+
+    %% 2) Request normal
+    U->>B: POST /transfer (header: X-Session-Id: abc123)
+    B->>B: Resolve session_id → tokens
+    B->>R: POST /api/transfer
+          Authorization: Bearer <access_token>
+    R->>R: Valida token, aplica RBAC
+    alt autorizado
+        R-->>B: 200 {result}
+        B-->>U: 200 {result}
+    else proibido
+        R-->>B: 403 Forbidden
+        B-->>U: 403 Forbidden
+    end
+
+    %% 3) Refresh (invisível para Browser)
+    B->>R: usa refresh_token antes do expirar
+    R->>K: /token (refresh)
+    K-->>R: {new access_token}
+    R-->>B: {new access_token}
+    B->>B: Atualiza session store
+
+
+
+
+
+
+
+========
 sequenceDiagram
     autonumber
     participant U as User Browser
