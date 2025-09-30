@@ -1,6 +1,54 @@
 
 RBAC Application
 
+sequenceDiagram
+    autonumber
+    participant U as User (Browser)
+    participant N as NGINX (Edge mTLS Proxy)
+    participant O as oauth2-proxy (OIDC Client)
+    participant K as Keycloak (login.sua-idp.com)
+    participant P as Portal SDL Frontend (app.sua-app.com)
+
+    %% ---- USER CLICKS LOGOUT IN THE PORTAL ----
+    U->>N: POST /logout (or /oauth2/sign_out)
+    note over N: mTLS enforced: client cert is verified
+    alt App-driven logout route (/logout)
+        N->>O: Proxy /oauth2/sign_out
+    else Direct call to oauth2-proxy
+        N->>O: Proxy /oauth2/sign_out
+    end
+
+    %% ---- CLEAR LOCAL SESSION (oauth2-proxy) ----
+    O-->>U: Set-Cookie: _oauth2_proxy=; Expires=past; HttpOnly; Secure; SameSite
+    note right of O: Local session invalidated (no tokens exposed to browser)
+
+    %% ---- OPTIONAL: SSO LOGOUT AT KEYCLOAK (RP-INITIATED) ----
+    alt SSO logout enabled
+        O-->>U: 302 → K /protocol/openid-connect/logout<br/>?post_logout_redirect_uri=https://app.sua-app.com/logged-out
+        U->>N: GET /protocol/openid-connect/logout?... (to Keycloak)
+        N->>K: Proxy logout to Keycloak
+        K-->>U: 302 → https://app.sua-app.com/logged-out
+        U->>N: GET /logged-out
+        N->>P: Proxy /logged-out (public page)
+        P-->>N: logged-out view
+        N-->>U: Render "logged out"
+    else Local logout only
+        O-->>U: 302 → https://app.sua-app.com/logged-out (or 204)
+        U->>N: GET /logged-out
+        N->>P: Proxy /logged-out
+        P-->>N: logged-out view
+        N-->>U: Render "logged out"
+    end
+
+    %% ---- EDGE CASES ----
+    rect rgba(255,240,220,0.5)
+    note over O: If session already missing/expired → still clear cookie and continue.
+    note over K: Without SSO logout, Keycloak session may remain active.<br/>Next visit may auto-login unless the IdP session times out or is cleared.
+    end
+
+
+
+
 
 - OAUTH2_PROXY_CLIENT_ID=your-client-id
 - OAUTH2_PROXY_CLIENT_SECRET=your-client-secret
