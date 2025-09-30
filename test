@@ -127,14 +127,78 @@ sequenceDiagram
 
 
 
+#RBAC with oatuh2_proxy_client authorization
+
+sequenceDiagram
+    autonumber
+    participant U as User (Browser)
+    participant N as NGINX (mTLS + auth_request)
+    participant O as oauth2-proxy (OIDC session)
+    participant R as RBAC Middleware (api.sua-app.com)
+    participant DB as RBAC Policy DB (roles/allowlists/limits)
+    participant S as Signer/Relayer (KMS)
+    participant CH as Chain RPC (node)
+
+    %% ---- PRECONDITION: user is already logged in ----
+    note over U,O: Browser holds _oauth2_proxy session cookie (HttpOnly, Secure)
+
+    %% ---- TRANSFER REQUEST FROM THE PORTAL ----
+    U->>N: POST /api/transfer  (credentials: include; CSRF header)
+    note over N: mTLS: verify client cert (optional but recommended)
+
+    %% ---- AUTHN CHECK AT THE EDGE ----
+    N->>O: subrequest /oauth2/auth  (validate session cookie)
+    O-->>N: 200 OK + X-Auth-Request-User/Email/Groups
+    note over N: If 401 → 302 to /oauth2/start (not shown)
+
+    %% ---- FORWARD TO RBAC WITH IDENTITY CONTEXT ----
+    N->>R: Proxy /api/transfer<br/>X-Auth-Request-User, X-Auth-Request-Email, X-SSL-Client-Verify/CN, CSRF token
+
+    %% ---- RBAC AUTHORIZATION ----
+    R->>R: Validate CSRF, content-type, schema (amount, from, to, contract)
+    R->>DB: Fetch user→tenant mapping, roles, wallet/contract allowlists, tx limits
+    DB-->>R: {roles:["writer"], wallets:["0xFrom..."], contracts:["0xToken..."], limits:{daily:..., perTx:...}}
+    R->>R: Enforce policy: role=writer? fromWallet allowed? contract allowed? amounts/limits OK?
+    alt Authorized
+        %% ---- PREP + SUBMIT TRANSACTION ----
+        R->>S: Build tx (e.g., ERC20 transfer), EIP-1559 params, optional EIP-712; request signature
+        S->>CH: Send signed tx to chain RPC
+        CH-->>S: txHash / receipt (pending or mined)
+        S-->>R: {txHash, status:pended}
+        R-->>N: 200 { txHash, status:"submitted" }
+        N-->>U: 200 { txHash, status:"submitted" }
+    else Denied
+        R-->>N: 403 { error:"not_authorized", reason:"wallet/contract/role/limit" }
+        N-->>U: 403 { error, reason }
+    end
+
+Browser → NGINX: POST /api/transfer with the session cookie (from oauth2-proxy) and a CSRF header from your SPA.
+
+NGINX → oauth2-proxy: auth_request validates the cookie. If valid, oauth2-proxy returns 200 and injects identity headers (e.g., X-Auth-Request-User, X-Auth-Request-Email, X-Auth-Request-Groups).
+
+NGINX → RBAC: forwards the call, passing the identity headers (and, if you enforce device binding, X-SSL-Client-Verify/X-SSL-Client-CN).
+
+RBAC:
+
+Validates CSRF and the payload (from, to, amount, contractAddress).
+
+Loads roles & allowlists from its Policy DB (e.g., writer role; fromWallet allowed; contract allowed; per-tx/daily limits).
+
+If authorized, RBAC prepares the transaction (ERC-20 transfer or equivalent), optionally as EIP-712 typed data, requests a signature from the Signer/Relayer (KMS), and submits to the Chain RPC. Returns { txHash, status:"submitted" }.
+
+If denied, returns 403 with the reason (role/wallet/contract/limit).
+
+
+
+
+
+#RBAC with oatuh2_proxy_client authentication
 
 
 - OAUTH2_PROXY_CLIENT_ID=your-client-id
 - OAUTH2_PROXY_CLIENT_SECRET=your-client-secret
 - OAUTH2_PROXY_PROVIDER=oidc
 - OAUTH2_PROXY_OIDC_ISSUER_URL=https://login.your-keycloak.com/realms/your-realm
-
-
 
 sequenceDiagram
     autonumber
