@@ -3,46 +3,68 @@ RBAC Application
 
 sequenceDiagram
     autonumber
-    participant U as User (Browser)
-    participant N as NGINX (Edge proxy)
+    participant CA as Certificate Authority (Root/Intermediate)
+    participant U as User (Browser with Client Cert)
+    participant N as NGINX (Edge mTLS Proxy)
     participant P as Portal SDL Frontend (app.sua-app.com)
     participant R as RBAC Middleware (api.sua-app.com)
     participant K as Keycloak (login.sua-idp.com)
-    participant S as Session Store (e.g., Redis)
+    participant S as Session Store (Redis)
 
-    %% ---- PORTAL LOAD VIA NGINX ----
+    %% ---- ONE-TIME ENROLLMENT (PKI) ----
+    U->>CA: Submit CSR (request client certificate)
+    CA-->>U: Issue client certificate (User.crt / .p12)
+    note over U,CA: User installs client cert+key in the browser/device
+
+    %% ---- PORTAL LOAD (mTLS @ NGINX) ----
+    U->>N: TLS handshake (client presents User.crt)
+    N-->>U: Verify cert chain (Root/Intermediate CA), CRL/OCSP, expiry → TLS established
     U->>N: GET https://app.sua-app.com/
     N->>P: Proxy / (serve SPA)
     P-->>N: index.html, JS/CSS
     N-->>U: Portal assets
 
-    %% ---- LOGIN INITIATION (Portal calls RBAC via NGINX route) ----
-    U->>N: GET /auth/login?next=/dashboard   %% initiated by Portal (button/auto)
+    %% ---- LOGIN INITIATION (via NGINX → RBAC) ----
+    U->>N: GET /auth/login?next=/dashboard  (same origin)
+    N-->>U: Enforce mTLS again (same TLS session or re-handshake per config)
     N->>R: Proxy /auth/login
-    note right of R: Generate state (and nonce)
+    note right of R: Generate state (and nonce if validating ID Token)
 
-    %% ---- REDIRECT TO KEYCLOAK ----
+    %% ---- REDIRECT TO KEYCLOAK (INTERACTIVE LOGIN) ----
     R-->>U: 302 → K /realms/<realm>/protocol/openid-connect/auth<br/>client_id=rbac-middleware&response_type=code&redirect_uri=https://api.sua-app.com/auth/callback&scope=openid profile email&state=STATE
     U->>K: GET .../auth (Keycloak Login Page)
-    K->>U: Render login (username/password, MFA)
+    K->>U: Render login (username/password, MFA/WebAuthn)
     U->>K: Submit credentials
 
     %% ---- CALLBACK TO RBAC (CONFIDENTIAL CLIENT) ----
     K-->>U: 302 → https://api.sua-app.com/auth/callback?code=CODE&state=STATE
     U->>N: GET /auth/callback?code=CODE&state=STATE
+    N-->>U: Verify client cert (mTLS) → allow
     N->>R: Proxy /auth/callback
 
-    %% ---- CODE → TOKENS (SERVER-SIDE) ----
+    %% ---- SERVER-SIDE CODE → TOKENS ----
     R->>K: POST /token (grant_type=authorization_code,<br/>client_id=rbac-middleware, client_secret=***, code, redirect_uri)
     K-->>R: 200 { access_token, refresh_token, id_token, expires_in }
-
-    %% ---- CREATE SESSION + REDIRECT TO PORTAL ----
-    R->>S: Save session { sub, roles, tokens, expiry }
+    R->>S: Save session { sub, tokens, expiry }
     R-->>U: Set-Cookie: sid=SESSION_ID (HttpOnly, Secure, SameSite) + 302 → https://app.sua-app.com/dashboard
+
+    %% ---- FINAL REDIRECT TO PORTAL (AUTH ESTABLISHED) ----
     U->>N: GET /dashboard
-    N->>P: Proxy /dashboard (serve SPA route)
+    N->>P: Proxy /dashboard (SPA route)
     P-->>N: dashboard assets
-    N-->>U: Portal (authenticated session established)
+    N-->>U: Portal (authenticated session via cookie)
+
+
+
+CA/PKI: issue user/browser client certs; publish CA chain (Root+Intermediate) to NGINX.
+
+NGINX: ssl_verify_client on; ssl_client_certificate <CA-bundle>; (enable OCSP/CRL as needed).
+
+Keycloak: single confidential client rbac-middleware with redirect https://api.sua-app.com/auth/callback.
+
+RBAC: handles /auth/login → redirect to KC; /auth/callback → /token exchange; sets sid HttpOnly cookie; redirects to /dashboard.
+
+Portal: served behind NGINX; browser only ever sends the client cert (mTLS) and receives the session cookie (no JWT exposure).
 
 
 ✅ With this model:
