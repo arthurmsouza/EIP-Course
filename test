@@ -4,145 +4,46 @@ RBAC Application
 sequenceDiagram
     autonumber
     participant U as User (Browser)
-    participant P as Portal (https://app.sua-app.com)
-    participant N as NGINX Edge (mTLS gateway)
-    participant R as RBAC Middleware (https://api.sua-app.com)
-    participant K as Keycloak (https://login.sua-idp.com)
-    participant S as Session Store (Redis)
-    participant A as Downstream API
+    participant N as NGINX (Edge proxy)
+    participant P as Portal SDL Frontend (app.sua-app.com)
+    participant R as RBAC Middleware (api.sua-app.com)
+    participant K as Keycloak (login.sua-idp.com)
+    participant S as Session Store (e.g., Redis)
 
-    %% ---- LOGIN INIT ----
-    U->>P: Open Portal (/)
-    P->>R: GET /auth/login?next=/dashboard
-    U->>N: TLS handshake with client cert
-    N-->>U: TLS established (cert validated by CA)
+    %% ---- PORTAL LOAD VIA NGINX ----
+    U->>N: GET https://app.sua-app.com/
+    N->>P: Proxy / (serve SPA)
+    P-->>N: index.html, JS/CSS
+    N-->>U: Portal assets
 
-    R->>U: 302 Redirect → K /realms/<realm>/protocol/openid-connect/auth<br/>client_id=rbac-middleware&response_type=code&redirect_uri=https://api.sua-app.com/auth/callback&scope=openid profile email&state=STATE
-    U->>K: GET .../auth (Login Page)
+    %% ---- LOGIN INITIATION (Portal calls RBAC via NGINX route) ----
+    U->>N: GET /auth/login?next=/dashboard   %% initiated by Portal (button/auto)
+    N->>R: Proxy /auth/login
+    note right of R: Generate state (and nonce)
 
-    %% ---- USER AUTHENTICATES ----
-    K->>U: Render Login Page
-    U->>K: Submit credentials (username/password + MFA)
+    %% ---- REDIRECT TO KEYCLOAK ----
+    R-->>U: 302 → K /realms/<realm>/protocol/openid-connect/auth<br/>client_id=rbac-middleware&response_type=code&redirect_uri=https://api.sua-app.com/auth/callback&scope=openid profile email&state=STATE
+    U->>K: GET .../auth (Keycloak Login Page)
+    K->>U: Render login (username/password, MFA)
+    U->>K: Submit credentials
 
-    %% ---- CALLBACK ----
-    K->>U: 302 Redirect → https://api.sua-app.com/auth/callback?code=CODE&state=STATE
-    U->>N: GET /auth/callback?code=CODE&state=STATE (mTLS again)
-    N->>R: Proxy request
+    %% ---- CALLBACK TO RBAC (CONFIDENTIAL CLIENT) ----
+    K-->>U: 302 → https://api.sua-app.com/auth/callback?code=CODE&state=STATE
+    U->>N: GET /auth/callback?code=CODE&state=STATE
+    N->>R: Proxy /auth/callback
 
-    R->>K: POST /token<br/>grant_type=authorization_code&client_id=rbac-middleware&client_secret=***&code=CODE&redirect_uri=https://api.sua-app.com/auth/callback
-    K-->>R: {access_token, refresh_token, id_token}
+    %% ---- CODE → TOKENS (SERVER-SIDE) ----
+    R->>K: POST /token (grant_type=authorization_code,<br/>client_id=rbac-middleware, client_secret=***, code, redirect_uri)
+    K-->>R: 200 { access_token, refresh_token, id_token, expires_in }
 
-    R->>S: Save session {sub, roles, tokens, expiry}
-    R->>U: Set-Cookie sid=SESSION_ID (HttpOnly, Secure, SameSite) + 302 → https://app.sua-app.com/dashboard
+    %% ---- CREATE SESSION + REDIRECT TO PORTAL ----
+    R->>S: Save session { sub, roles, tokens, expiry }
+    R-->>U: Set-Cookie: sid=SESSION_ID (HttpOnly, Secure, SameSite) + 302 → https://app.sua-app.com/dashboard
+    U->>N: GET /dashboard
+    N->>P: Proxy /dashboard (serve SPA route)
+    P-->>N: dashboard assets
+    N-->>U: Portal (authenticated session established)
 
-    %% ---- API USE ----
-    U->>P: Open /dashboard
-    P->>N: XHR /api/me (cookie: sid=SESSION_ID, mTLS)
-    N->>R: Proxy /api/me
-    R->>A: GET /me (Authorization: Bearer <access_token>)
-    A-->>R: 200 {profile}
-    R-->>P: 200 {profile}
-
-    %% ---- REFRESH ----
-    R->>K: POST /token (grant_type=refresh_token&client_id=rbac-middleware&client_secret=***&refresh_token=RT)
-    K-->>R: {new access_token, refresh_token}
-    R->>S: Update session
-
-    %% ---- LOGOUT ----
-    U->>P: Click Logout
-    P->>N: POST /auth/logout (mTLS)
-    N->>R: Proxy /auth/logout
-    R->>S: Destroy session
-    R->>U: Clear sid cookie
-    R->>K: (optional) end_session_endpoint
-    K-->>U: Redirect → https://app.sua-app.com/
-
-
-Authentication
-
-Step-by-Step Description (without PKCE)
-Prerequisites
-
-PKI setup: Root CA → Intermediate CA → issue client certificates.
-
-User installs client cert in browser/device.
-
-NGINX configured with mTLS (ssl_verify_client on;).
-
-Keycloak client rbac-middleware created as confidential:
-
-Authorization Code Flow enabled
-
-Redirect URI: https://api.sua-app.com/auth/callback
-
-Post Logout Redirect URI: https://app.sua-app.com/*
-
-Authentication Flow
-
-User opens https://app.sua-app.com.
-
-Portal requests login at https://api.sua-app.com/auth/login?next=/dashboard.
-
-mTLS check: browser presents client cert, NGINX validates with CA → request allowed.
-
-RBAC generates a state, then responds with 302 redirect to Keycloak /auth with params:
-
-client_id=rbac-middleware
-
-response_type=code
-
-redirect_uri=https://api.sua-app.com/auth/callback
-
-scope=openid profile email
-
-state=<random>
-
-Keycloak shows Login Page.
-
-User authenticates (password, MFA, etc.).
-
-Callback + Token Exchange
-
-Keycloak redirects to RBAC: https://api.sua-app.com/auth/callback?code=...&state=....
-
-mTLS again: NGINX validates client cert, forwards to RBAC.
-
-RBAC validates state, then calls Keycloak /token with:
-
-grant_type=authorization_code
-client_id=rbac-middleware
-client_secret=SECRET
-code=XYZ
-redirect_uri=https://api.sua-app.com/auth/callback
-
-
-Keycloak responds with tokens.
-
-RBAC saves {access_token, refresh_token, expiry} in session store (Redis).
-
-RBAC sets sid cookie (HttpOnly, Secure, SameSite) and redirects user to portal /dashboard.
-
-Using the Application
-
-Portal uses the session cookie (sid) in requests to RBAC APIs.
-
-RBAC checks session, enforces RBAC rules (roles, allowlists), and forwards calls downstream with Authorization: Bearer <access_token>.
-
-Microservice responds, RBAC passes result back to portal.
-
-Token Refresh
-
-If access_token near expiry, RBAC uses refresh_token with Keycloak /token to get a new pair.
-
-RBAC updates the session transparently.
-
-Logout
-
-Portal calls POST /auth/logout.
-
-RBAC clears session + cookie, optionally calls Keycloak end_session_endpoint.
-
-User is redirected back to https://app.sua-app.com/ logged out.
 
 ✅ With this model:
 
