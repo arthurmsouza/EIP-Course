@@ -1,75 +1,68 @@
 RBAC Application
 
 
-Authentication
 sequenceDiagram
     autonumber
     participant U as User (Browser)
-    participant P as Portal (https://app.sua-app.com)
-    participant R as RBAC Middleware (https://api.sua-app.com)
-    participant K as Keycloak (https://login.sua-idp.com)
-    participant S as Session Store (e.g., Redis)
-    participant A as Downstream API / Microservice
+    participant P as Portal (app.sua-app.com)
+    participant N as NGINX Edge (mTLS gateway)
+    participant R as RBAC Middleware (api.sua-app.com)
+    participant K as Keycloak (login.sua-idp.com)
+    participant CA as PKI (Root/Intermediate CA)
+    participant S as Session Store (Redis)
+    participant A as Downstream API
+
+    %% ---- ONE-TIME PKI ENROLLMENT ----
+    rect rgba(235, 245, 255, 0.7)
+    U->>CA: Request client certificate (CSR) 
+    CA-->>U: Issue client cert (User.crt) signed by Intermediate CA
+    note over U,CA: Cert instalado no browser (ou no dispositivo) com a chave privada
+    end
+
+    %% ---- FIRST CONTACT: mTLS @ NGINX ----
+    U->>N: TLS handshake (Server presents N cert; Client presents User.crt)
+    N-->>U: TLS established if cert valid (verify chain, CRL/OCSP, expiry)
+    note over N: ssl_verify_client on;<br/>verify against CA bundle
 
     %% ---- LOGIN INIT ----
     U->>P: Open Portal (/)
-    P->>R: GET /auth/login?next=/dashboard (credentials: include)
-    note right of R: Generate state (+ optional nonce / PKCE code_challenge)
+    P->>N: GET /auth/login?next=/dashboard (cookie/samesite)
+    N->>R: Proxy /auth/login (mTLS upstream optional)
+    R->>R: Generate state (and optional nonce/PKCE)
+    R-->>U: 302 → K /auth (client_id, response_type=code,<br/>redirect_uri=https://api.sua-app.com/auth/callback, scope, state[, code_challenge])
 
-    R->>U: 302 Redirect → K /realms/<realm>/protocol/openid-connect/auth<br/>client_id=rbac-middleware&response_type=code&redirect_uri=https://api.sua-app.com/auth/callback&scope=openid profile email&state=STATE[&code_challenge=...]
+    %% ---- KEYCLOAK INTERACTIVE LOGIN ----
     U->>K: GET .../auth (Login Page)
+    K->>U: Render login + MFA/WebAuthn
+    U->>K: Submit credentials/MFA
 
-    %% ---- USER AUTHENTICATES ----
-    K->>U: Render Login Page (username/password, MFA, etc.)
-    U->>K: Submit credentials (and MFA if any)
+    %% ---- CALLBACK TO RBAC (CONFIDENTIAL CLIENT) ----
+    K-->>U: 302 → https://api.sua-app.com/auth/callback?code&state
+    U->>N: GET /auth/callback?code&state (mTLS again)
+    N->>R: Proxy /auth/callback
 
-    %% ---- CALLBACK TO RBAC ----
-    K->>U: 302 Redirect → https://api.sua-app.com/auth/callback?code=CODE&state=STATE
-    U->>R: GET /auth/callback?code=CODE&state=STATE
+    R->>K: POST /token (authorization_code, client_id, client_secret[, code_verifier])
+    K-->>R: {access_token, refresh_token, id_token, expires_in}
+    R->>S: Save session {sub, roles, AT, RT, exp}
+    R-->>U: Set-Cookie sid=... (HttpOnly, Secure, SameSite) + 302 → https://app.sua-app.com/dashboard
 
-    note right of R: Validate state (and nonce if using id_token)<br/>Exchange code → tokens at /token
-
-    R->>K: POST /realms/<realm>/protocol/openid-connect/token<br/>grant_type=authorization_code&client_id=rbac-middleware&client_secret=***&code=CODE&redirect_uri=https://api.sua-app.com/auth/callback[&code_verifier=...]
-    K-->>R: 200 { access_token, refresh_token, id_token, expires_in }
-
-    R->>S: Save session {sub, roles, access_token, refresh_token, expires_at}
-    R->>U: Set-Cookie: sid=SESSION_ID (HttpOnly, Secure, SameSite) + 302 → https://app.sua-app.com/dashboard
-
-    %% ---- PORTAL USES API WITH SESSION COOKIE ----
+    %% ---- API USE WITH SESSION COOKIE + mTLS EDGE ----
     U->>P: GET /dashboard
-    P->>R: XHR: GET /api/me (credentials: include; cookie: sid=SESSION_ID)
-
-    note over R: Load session by sid<br/>If access token near expiry → refresh
-
-    alt Access token expiring (<60s)
-        R->>K: POST /token (grant_type=refresh_token&client_id=rbac-middleware&client_secret=***&refresh_token=RT)
-        K-->>R: 200 { new access_token, refresh_token, expires_in }
-        R->>S: Update session tokens and expiry
-    end
-
-    R->>A: GET /me (Authorization: Bearer <access_token>)
-    A-->>R: 200 { user profile / claims }
-    R-->>P: 200 { user profile / claims }
-
-    %% ---- AUTHZ / RBAC ENFORCEMENT ----
-    P->>R: POST /api/tx (credentials: include)
-    note right of R: Enforce roles/allowlists (wallet/contract/etc.) before calling downstream
-    R->>A: POST /tx (Authorization: Bearer <access_token>)
-    A-->>R: 200 { result }
-    R-->>P: 200 { result }
+    P->>N: XHR GET /api/me (credentials: include; mTLS)
+    N->>R: Proxy /api/me (optionally mTLS upstream)
+    R->>R: Load session; refresh AT if near expiry
+    R->>A: GET /me (Authorization: Bearer <AT>)
+    A-->>R: 200 { profile/claims }
+    R-->>P: 200 { profile/claims }
 
     %% ---- LOGOUT ----
-    U->>P: Click "Logout"
-    P->>R: POST /auth/logout (credentials: include)
-    R->>S: Destroy session (SESSION_ID)
-    R->>U: Clear-Cookie sid= (HttpOnly, expires past)
-    R->>K: (Optional) GET /protocol/openid-connect/logout?post_logout_redirect_uri=https://app.sua-app.com/
-    K-->>U: 302 → https://app.sua-app.com/
+    U->>P: Click Logout
+    P->>N: POST /auth/logout (mTLS)
+    N->>R: Proxy /auth/logout
+    R->>S: Destroy session; clear cookie
+    R->>K: (optional) end_session → post_logout_redirect_uri=https://app.sua-app.com/
+    K-->>U: 302 → Portal
 
-    %% ---- ERROR HANDLING (EXAMPLES) ----
-    rect rgba(255, 230, 230, 0.5)
-    note over R,K: If /token refresh fails (invalid/expired RT):<br/>→ redirect user to /auth/login preserving next=/current
-    end
 
 
 
