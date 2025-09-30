@@ -1,7 +1,51 @@
-When a new user is created, there are two attributes in Keycloak that should be set and exposed via a JWT token to enable data segregation per role:
+sequenceDiagram
+  autonumber
+  actor A as Admin (RBAC role: admin)
+  participant FE as SDL Frontend (Admin UI)
+  participant BE as SDL Backend Service
+  participant DB as Postgres (RLS)
+  participant KC as Keycloak (Admin API)
 
-Organization ID: Also referred to as tenant_id. Keycloak does not provide this attribute out of the box. You need to add it as a custom attribute and configure a Protocol Mapper to inject it into the JWT as a claim. In this case, the RBAC middleware should generate the organization ID (UUID v4) and send it to Keycloak when creating the user.
+  %% --- Start ---
+  A->>FE: Submit Create Org + Initial User (name, bic, email, roles)
+  FE->>BE: POST /onboarding (payload + idempotency-key)
 
-User ID: Keycloak automatically generates the user ID (sub) when creating the user.
+  BE->>BE: Validate input & uniqueness
+  BE->>DB: BEGIN TRANSACTION
+  BE->>DB: INSERT Organization (tenant_id=UUIDv4, created_by=A.user_id)
+  DB-->>BE: org_id, tenant_id
+  BE->>DB: INSERT User (pending, is_active=false, tenant_id)
+  DB-->>BE: user_id
+  BE->>DB: INSERT PermissionAllowlist (inactive, optional)
+  DB-->>BE: allowlist_ids
 
-Keycloak provides an Admin API, which allows you to create new users, set temporary passwords, and assign roles. To use this API, you need a preconfigured service account with a client ID and secret in Keycloak. These credentials are required to invoke the Admin API endpoints.
+  %% --- Keycloak provisioning ---
+  BE->>KC: POST /admin/realms/<realm>/users {username,email, attributes:{tenant_id,bic}}
+  KC-->>BE: 201 Created (kc_user_id)
+  BE->>KC: PUT /users/{kc_user_id}/reset-password {value:<pwd>, temporary:true|false}
+  KC-->>BE: 204 No Content
+  BE->>KC: POST /users/{kc_user_id}/role-mappings/... {roles[]}
+  KC-->>BE: 204 No Content
+  BE->>KC: GET /users/{kc_user_id}
+  KC-->>BE: 200 OK (verify attributes)
+
+  %% --- Finalize DB ---
+  BE->>DB: UPDATE User SET is_active=true, role_id/roles=…
+  BE->>DB: UPDATE PermissionAllowlist SET active=true
+  BE->>DB: COMMIT
+
+  BE-->>FE: 201 Created (org_id, tenant_id, user_id, kc_user_id)
+  FE-->>A: Success (organization + initial user onboarded)
+
+  %% --- Error handling ---
+  rect rgb(255,245,245)
+    note over BE,KC: If Keycloak fails
+    BE->>DB: ROLLBACK
+    BE-->>FE: 409/422 Error
+  end
+
+  rect rgb(255,245,245)
+    note over DB,BE: If DB commit fails after KC success
+    BE->>KC: DELETE /users/{kc_user_id} (best effort)
+    BE-->>FE: 500 Error + alert
+  end
