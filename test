@@ -1,4 +1,25 @@
 
+Admin → app.roles='admin', app.tenant_id not required.
+	•	Auditor → app.roles='auditor', app.tenant_id not required.
+	•	Operator → app.roles='operator' and app.tenant_id='<org_uuid>'.
+
+Admins bypass tenant_id restrictions (cross-tenant CRUD).
+	•	Auditors bypass tenant_id restrictions but are limited to read-only.
+	•	Operators are strictly tenant-bound, and Postgres RLS enforces that by checking current_setting('app.tenant_id').
+
+Admin → cross-tenant read/write (can access data of any organization, including registering new orgs).
+	•	Operator → tenant-scoped read/write (restricted to their own org; writes must respect allowlist).
+	•	Auditor → cross-tenant read-only.
+
+user_id can be useful
+	1.	Auditing & traceability
+Every row created/updated can be stamped with created_by = user_id.
+→ You can later trace exactly which user (not just which organization) performed an action.
+	2.	Per-user restrictions inside a tenant
+Suppose two Operators belong to the same tenant, but one should only access a subset of data (e.g., wallets assigned to them).
+→ Then you need user_id in RLS to check created_by = current_setting('app.user_id')::uuid.
+	3.	Row-level ownership
+For example, if you let Operators see only their own draft transactions (not those of colleagues in the same org), RLS can enforce
 
 Database segregation by Role + Row-Level Security (RLS)
 
