@@ -2,6 +2,86 @@
 RBAC Application
 
 
+sequenceDiagram
+    autonumber
+    participant U as User Browser
+    participant CA as Certificate Authority (Root/Intermediate)
+    participant I as NGINX/Ingress (mTLS Gate + auth_request)
+    participant R as RBAC Middleware (OIDC Client + Session + API)
+    participant K as Keycloak (IdP)
+    participant F as SDL Frontend (Dashboard)
+    participant B as SDL Backend
+
+    %% 0) One-time PKI enrollment
+    U->>CA: CSR (generate keypair locally)
+    CA-->>U: Client cert (.crt/.p12)
+    note over U,CA: User installs cert+key in browser/OS
+
+    %% 1) mTLS at edge
+    U->>I: TLS handshake (client cert)
+    I->>I: Verify against CA (CRL/OCSP)
+    alt mTLS OK
+        I-->>U: TLS established
+    else mTLS fail
+        I-->>U: 400/401 mTLS required
+        return
+    end
+
+    %% 2) Guard dashboard with RBAC session
+    U->>I: GET /app
+    I->>R: auth_request /rbac/session/verify
+    alt No session
+        R-->>I: 401
+        I-->>U: 302 → R:/login?rd=/app
+    else Session OK
+        R-->>I: 200 + optional identity headers
+        I->>F: GET /app
+        F-->>U: 200 Dashboard
+    end
+
+    %% 3) RBAC performs OIDC (Auth Code) with Keycloak
+    U->>R: GET /login?rd=/app
+    R-->>U: 302 → K:/authorize?client_id=rbac&redirect_uri=R:/callback
+    U->>K: Keycloak login (creds/MFA)
+    K-->>U: 302 → R:/callback?code=AUTH_CODE
+    U->>R: GET /callback?code=AUTH_CODE
+    R->>K: POST /token (code → tokens)
+    K-->>R: {access_token, id_token, refresh_token}
+    R->>R: Create server-side session (store tokens/claims)
+    R-->>U: Set rbac_session cookie + 302 /app
+
+    %% 4) Authenticated dashboard load (after login)
+    U->>I: GET /app (with rbac_session)
+    I->>R: auth_request /rbac/session/verify
+    R-->>I: 200 OK (may include X-Client-Cert-Subject)
+    I->>F: GET /app
+    F-->>U: 200 Dashboard
+
+    %% 5) User triggers a business action via Backend
+    U->>I: POST /backend/transfer  (XHR)
+    I->>R: auth_request /rbac/session/verify
+    R-->>I: 200 OK
+    I->>B: POST /transfer  (forward)
+
+    %% 6) SDL Backend calls RBAC API endpoint (same RBAC)
+    B->>R: POST /api/transfer   (cookie: rbac_session)
+    R->>R: Resolve session → user/tenant/roles
+    R->>R: Authorize policy (claims, role, scope, mTLS subject if required)
+    alt Authorized
+        R->>R: Execute business logic (transfer)   %% RBAC == API
+        R-->>B: 200 OK (result)
+        B-->>U: 200 OK (JSON)
+    else Forbidden
+        R-->>B: 403 Forbidden
+        B-->>U: 403 Forbidden
+    end
+
+    %% 7) Silent refresh handled by RBAC
+    R->>K: POST /token (refresh_token when needed)
+    K-->>R: new access_token
+    R->>R: Update session store
+
+
 #RBAC MIddleware Drive automatic page redirect without OAuth2_proxy client
 
 sequenceDiagram
