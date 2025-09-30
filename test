@@ -1,3 +1,8 @@
+
+Row-Level Security (RLS) is a PostgreSQL feature that enables fine-grained access control at the row level, allowing organizations to enforce policies that restrict which records a user can query, insert, update, or delete. By applying conditions tied to attributes such as tenant IDs, user roles, or whitelists (e.g., wallet addresses), RLS ensures that each participant only interacts with data belonging to their organization, while maintaining strong isolation within a shared database. 
+In order to manage secure access and maintain clear separation of responsibilities within the SDL platform, specific roles are configured in Keycloak to govern permissions for different participants. These roles define the scope of actions that each user can perform—ranging from full administrative capabilities, such as registering new organizations, to read-only auditing or operational data management. Alongside this, the onboarding process ensures that every new organization is properly registered with essential information, including identification details, access credentials, assigned roles, and whitelists for allowed interactions.
+
+
 erDiagram
     ORGANIZATION ||--o{ USER : "has many"
     ORGANIZATION ||--o{ PERMISSION_ALLOWLIST : "defines"
