@@ -2,52 +2,30 @@ erDiagram
     ORGANIZATION ||--o{ USER : "has many"
     ORGANIZATION ||--o{ PERMISSION_ALLOWLIST : "defines"
     ORGANIZATION ||--o{ TRANSACTION : "owns"
-    ORGANIZATION ||--o{ USER_ROLE : "scopes"
 
     USER ||--o{ TRANSACTION : "created_by"
-    USER }o--o{ ROLE : "has"
-    USER ||--o{ USER_ROLE : "assigned"
-
-    ROLE ||--o{ ROLE_PERMISSION : "grants"
-    ROLE ||--o{ USER_ROLE : "applies to"
 
     ORGANIZATION {
-      string id PK
+      uuid id PK  "tenant_id"
       string name
-      string bic
+      string bic          
       datetime created_at
       datetime updated_at
     }
 
     USER {
-      string id PK
-      string org_id
+      uuid id PK
+      uuid org_id         "-> ORGANIZATION.id"
       string email
-      string password_hash
+      string role_id      "Keycloak role id or name"
       boolean is_active
       datetime created_at
       datetime updated_at
     }
 
-    ROLE {
-      string id PK
-      string name
-    }
-
-    USER_ROLE {
-      string user_id PK
-      string role_id PK
-      string org_id  PK
-    }
-
-    ROLE_PERMISSION {
-      string role_id PK
-      string permission PK
-    }
-
     PERMISSION_ALLOWLIST {
-      string id PK
-      string org_id
+      uuid id PK
+      uuid org_id         "-> ORGANIZATION.id"
       string wallet_address
       string label
       boolean active
@@ -55,12 +33,12 @@ erDiagram
     }
 
     TRANSACTION {
-      string id PK
-      string org_id
-      string created_by
+      uuid id PK
+      uuid org_id         "-> ORGANIZATION.id"
+      uuid created_by     "-> USER.id"
       string to_wallet
       decimal amount
-      string payload
-      string status
+      string payload      "JSON as text"
+      string status       "draft|submitted|confirmed|failed"
       datetime created_at
     }
