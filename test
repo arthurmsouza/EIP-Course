@@ -1,5 +1,14 @@
 
 RBAC Application
+
+
+- OAUTH2_PROXY_CLIENT_ID=your-client-id
+- OAUTH2_PROXY_CLIENT_SECRET=your-client-secret
+- OAUTH2_PROXY_PROVIDER=oidc
+- OAUTH2_PROXY_OIDC_ISSUER_URL=https://login.your-keycloak.com/realms/your-realm
+
+
+
 sequenceDiagram
     autonumber
     participant CA as Certificate Authority (Root/Intermediate)
