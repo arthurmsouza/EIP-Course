@@ -1,1 +1,7 @@
-The RBAC Middleware opens a PostgreSQL connection scoped with parameters derived from the JWT token—tenant ID (tenant_id), user ID (user_id), and user roles (admin/auditor/operator)—extracted through OIDC/IdP authentication. This ensures data segregation is enforced according to RLS policies.
+When a new user is created, there are two attributes in Keycloak that should be set and exposed via a JWT token to enable data segregation per role:
+
+Organization ID: Also referred to as tenant_id. Keycloak does not provide this attribute out of the box. You need to add it as a custom attribute and configure a Protocol Mapper to inject it into the JWT as a claim. In this case, the RBAC middleware should generate the organization ID (UUID v4) and send it to Keycloak when creating the user.
+
+User ID: Keycloak automatically generates the user ID (sub) when creating the user.
+
+Keycloak provides an Admin API, which allows you to create new users, set temporary passwords, and assign roles. To use this API, you need a preconfigured service account with a client ID and secret in Keycloak. These credentials are required to invoke the Admin API endpoints.
