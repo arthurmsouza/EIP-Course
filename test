@@ -1,51 +1,81 @@
-sequenceDiagram
-  autonumber
-  actor A as Admin (RBAC role: admin)
-  participant FE as SDL Frontend (Admin UI)
-  participant BE as SDL Backend Service
-  participant DB as Postgres (RLS)
-  participant KC as Keycloak (Admin API)
+classDiagram
+  class ORGANIZATION {
+    +uuid id
+    +uuid tenant_id
+    +string name
+    +string bic
+    +uuid api_key_id
+    +uuid created_by
+    +datetime created_at
+    +datetime updated_at
+  }
 
-  %% --- Start ---
-  A->>FE: Submit Create Org + Initial User (name, bic, email, roles)
-  FE->>BE: POST /onboarding (payload + idempotency-key)
+  class USER {
+    +uuid id
+    +uuid tenant_id
+    +uuid org_id
+    +string email
+    +string username
+    +string role_id
+    +boolean is_active
+    +uuid created_by
+    +datetime created_at
+    +datetime updated_at
+  }
 
-  BE->>BE: Validate input & uniqueness
-  BE->>DB: BEGIN TRANSACTION
-  BE->>DB: INSERT Organization (tenant_id=UUIDv4, created_by=A.user_id)
-  DB-->>BE: org_id, tenant_id
-  BE->>DB: INSERT User (pending, is_active=false, tenant_id)
-  DB-->>BE: user_id
-  BE->>DB: INSERT PermissionAllowlist (inactive, optional)
-  DB-->>BE: allowlist_ids
+  class TRANSACTION {
+    +uuid id
+    +uuid tenant_id
+    +uuid org_id
+    +uuid created_by
+    +string payload
+    +string status
+    +datetime created_at
+  }
 
-  %% --- Keycloak provisioning ---
-  BE->>KC: POST /admin/realms/<realm>/users {username,email, attributes:{tenant_id,bic}}
-  KC-->>BE: 201 Created (kc_user_id)
-  BE->>KC: PUT /users/{kc_user_id}/reset-password {value:<pwd>, temporary:true|false}
-  KC-->>BE: 204 No Content
-  BE->>KC: POST /users/{kc_user_id}/role-mappings/... {roles[]}
-  KC-->>BE: 204 No Content
-  BE->>KC: GET /users/{kc_user_id}
-  KC-->>BE: 200 OK (verify attributes)
+  class WALLET_LIST {
+    +uuid tenant_id <<PK>>
+    +uuid id <<PK>>
+    +uuid org_id
+    +string address
+    +string label
+    +string network
+    +boolean is_active
+    +datetime created_at
+  }
 
-  %% --- Finalize DB ---
-  BE->>DB: UPDATE User SET is_active=true, role_id/roles=…
-  BE->>DB: UPDATE PermissionAllowlist SET active=true
-  BE->>DB: COMMIT
+  class CONTRACT_LIST {
+    +uuid tenant_id <<PK>>
+    +uuid id <<PK>>
+    +uuid org_id
+    +string address
+    +string label
+    +string chain_id
+    +boolean is_active
+    +datetime created_at
+  }
 
-  BE-->>FE: 201 Created (org_id, tenant_id, user_id, kc_user_id)
-  FE-->>A: Success (organization + initial user onboarded)
+  class PERMISSION {
+    +uuid tenant_id <<PK>>
+    +uuid id <<PK>>
+    +uuid org_id
+    +uuid created_by
+    +uuid wallet_id
+    +uuid contract_id
+    +int amount
+    +int type_tx
+    +string label
+    +boolean is_active
+    +datetime created_at
+  }
 
-  %% --- Error handling ---
-  rect rgb(255,245,245)
-    note over BE,KC: If Keycloak fails
-    BE->>DB: ROLLBACK
-    BE-->>FE: 409/422 Error
-  end
+  ORGANIZATION "1" --> "many" USER : has
+  ORGANIZATION "1" --> "many" TRANSACTION : has
+  ORGANIZATION "1" --> "many" WALLET_LIST : has
+  ORGANIZATION "1" --> "many" CONTRACT_LIST : has
 
-  rect rgb(255,245,245)
-    note over DB,BE: If DB commit fails after KC success
-    BE->>KC: DELETE /users/{kc_user_id} (best effort)
-    BE-->>FE: 500 Error + alert
-  end
+  USER "1" --> "many" TRANSACTION : created_by
+  USER "1" --> "many" PERMISSION  : created_by
+
+  WALLET_LIST "1" --> "many" PERMISSION  : wallet_id
+  CONTRACT_LIST "1" --> "many" PERMISSION : contract_id
