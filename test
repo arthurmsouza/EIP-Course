@@ -4,36 +4,24 @@ erDiagram
     string name
     string bic
     uuid api_key_id
-    uuid created_by  "user_id (optional)"
     datetime created_at
     datetime updated_at
   }
 
   "USER" {
     uuid id PK
-    uuid org_id FK   "belongs to ORGANIZATION (tenant)"
+    uuid org_id FK   "belongs to ORGANIZATION"
     string email
     string username
-    string role_id   "Keycloak role name"
+    string role_id
     boolean is_active
-    uuid created_by  "user_id (optional)"
     datetime created_at
     datetime updated_at
   }
 
-  WALLET_ALLOW_LIST {
+  CONTRACT_LIST {
     uuid id PK
-    uuid user_id FK   "owner (extends USER)"
-    string address
-    string label
-    string network
-    boolean is_active
-    datetime created_at
-  }
-
-  CONTRACT_ALLOW_LIST {
-    uuid id PK
-    uuid user_id FK   "owner (extends USER)"
+    uuid org_id FK    "eligible contracts for this org"
     string address
     string label
     string chain_id
@@ -41,19 +29,55 @@ erDiagram
     datetime created_at
   }
 
-  TRANSACTION {
+  WALLET_LIST {
     uuid id PK
-    uuid org_id FK     "scoped to ORGANIZATION"
-    uuid created_by FK "user_id"
-    string payload     "JSON as text"
-    string status      "confirmed|failed"
+    uuid org_id FK    "eligible wallets for this org"
+    string address
+    string label
+    string network
+    boolean is_active
     datetime created_at
   }
 
-  %% --------- Relationships ----------
-  ORGANIZATION ||--o{ "USER" : has
-  "USER" ||--o{ WALLET_ALLOW_LIST : owns_wallets
-  "USER" ||--o{ CONTRACT_ALLOW_LIST : owns_contracts
+  USER_CONTRACT_ALLOW {
+    uuid id PK
+    uuid user_id FK
+    uuid contract_id FK
+    boolean is_active
+    datetime created_at
+  }
 
+  USER_WALLET_ALLOW {
+    uuid id PK
+    uuid user_id FK
+    uuid wallet_id FK
+    boolean is_active
+    datetime created_at
+  }
+
+  TRANSACTION {
+    uuid id PK
+    uuid org_id FK
+    uuid created_by FK  "user_id"
+    string payload      "JSON as text"
+    string status       "confirmed|failed"
+    datetime created_at
+  }
+
+  %% ---- Catalog ownership by org
+  ORGANIZATION ||--o{ CONTRACT_LIST : catalogs
+  ORGANIZATION ||--o{ WALLET_LIST   : catalogs
+
+  %% ---- Users in org
+  ORGANIZATION ||--o{ "USER" : has
+
+  %% ---- Per-user allow mappings
+  "USER" ||--o{ USER_CONTRACT_ALLOW : can_use_contract
+  CONTRACT_LIST ||--o{ USER_CONTRACT_ALLOW : contract
+
+  "USER" ||--o{ USER_WALLET_ALLOW : can_use_wallet
+  WALLET_LIST ||--o{ USER_WALLET_ALLOW : wallet
+
+  %% ---- Transactions
   ORGANIZATION ||--o{ TRANSACTION : has_many
   "USER" ||--o{ TRANSACTION : created_by
