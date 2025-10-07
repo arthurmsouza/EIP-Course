@@ -1,81 +1,59 @@
-classDiagram
-  class ORGANIZATION {
-    +uuid id
-    +uuid tenant_id
-    +string name
-    +string bic
-    +uuid api_key_id
-    +uuid created_by
-    +datetime created_at
-    +datetime updated_at
+erDiagram
+  ORGANIZATION {
+    uuid id PK
+    string name
+    string bic
+    uuid api_key_id
+    uuid created_by  "user_id (optional)"
+    datetime created_at
+    datetime updated_at
   }
 
-  class USER {
-    +uuid id
-    +uuid tenant_id
-    +uuid org_id
-    +string email
-    +string username
-    +string role_id
-    +boolean is_active
-    +uuid created_by
-    +datetime created_at
-    +datetime updated_at
+  "USER" {
+    uuid id PK
+    uuid org_id FK   "belongs to ORGANIZATION (tenant)"
+    string email
+    string username
+    string role_id   "Keycloak role name"
+    boolean is_active
+    uuid created_by  "user_id (optional)"
+    datetime created_at
+    datetime updated_at
   }
 
-  class TRANSACTION {
-    +uuid id
-    +uuid tenant_id
-    +uuid org_id
-    +uuid created_by
-    +string payload
-    +string status
-    +datetime created_at
+  WALLET_ALLOW_LIST {
+    uuid id PK
+    uuid user_id FK   "owner (extends USER)"
+    string address
+    string label
+    string network
+    boolean is_active
+    datetime created_at
   }
 
-  class WALLET_LIST {
-    +uuid tenant_id <<PK>>
-    +uuid id <<PK>>
-    +uuid org_id
-    +string address
-    +string label
-    +string network
-    +boolean is_active
-    +datetime created_at
+  CONTRACT_ALLOW_LIST {
+    uuid id PK
+    uuid user_id FK   "owner (extends USER)"
+    string address
+    string label
+    string chain_id
+    boolean is_active
+    datetime created_at
   }
 
-  class CONTRACT_LIST {
-    +uuid tenant_id <<PK>>
-    +uuid id <<PK>>
-    +uuid org_id
-    +string address
-    +string label
-    +string chain_id
-    +boolean is_active
-    +datetime created_at
+  TRANSACTION {
+    uuid id PK
+    uuid org_id FK     "scoped to ORGANIZATION"
+    uuid created_by FK "user_id"
+    string payload     "JSON as text"
+    string status      "confirmed|failed"
+    datetime created_at
   }
 
-  class PERMISSION {
-    +uuid tenant_id <<PK>>
-    +uuid id <<PK>>
-    +uuid org_id
-    +uuid created_by
-    +uuid wallet_id
-    +uuid contract_id
-    +int amount
-    +int type_tx
-    +string label
-    +boolean is_active
-    +datetime created_at
-  }
+  %% --------- Relationships ----------
+  ORGANIZATION ||--o{ "USER" : has
+  "USER" ||--o{ WALLET_ALLOW_LIST : owns_wallets
+  "USER" ||--o{ CONTRACT_ALLOW_LIST : owns_contracts
 
-  ORGANIZATION "1" --> "many" USER : has
-  ORGANIZATION "1" --> "many" TRANSACTION : has
-  ORGANIZATION "1" --> "many" WALLET_LIST : has
-  ORGANIZATION "1" --> "many" CONTRACT_LIST : has
-
-  USER "1" --> "many" TRANSACTION : created_by
-  USER "1" --> "many" PERMISSION  : created_by
-
-  WALLET_LIST "1" --> "many" PERMISSION  : wallet_id
-  CONTRACT_LIST "1" --> "many" PERMISSION : contract_id
+  ORGANIZATION ||--o{ TRANSACTION : has_many
+  "USER" ||--o{ TRANSACTION : created_by
