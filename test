@@ -1,83 +1,30 @@
-erDiagram
-  ORGANIZATION {
-    uuid id PK
-    string name
-    string bic
-    uuid api_key_id
-    datetime created_at
-    datetime updated_at
-  }
+Provide participating banks with secure access to the Paladin and Validium test environments through a centralized Identity and Access Management (IAM) layer.
+This IAM layer ensures minimum viable security for authentication (AuthN) and authorization (AuthZ) by integrating an Identity Provider (IdP) service — Keycloak — and enabling Single Sign-On (SSO) across all services.
 
-  "USER" {
-    uuid id PK
-    uuid org_id FK   "belongs to ORGANIZATION"
-    string email
-    string username
-    string role_id
-    boolean is_active
-    datetime created_at
-    datetime updated_at
-  }
+The goal is to establish a standardized, test-ready access control framework that simulates production-grade security principles while maintaining operational simplicity during integration and evaluation phases.
 
-  CONTRACT_LIST {
-    uuid id PK
-    uuid org_id FK    "eligible contracts for this org"
-    string address
-    string label
-    string chain_id
-    boolean is_active
-    datetime created_at
-  }
+⸻
 
-  WALLET_LIST {
-    uuid id PK
-    uuid org_id FK    "eligible wallets for this org"
-    string address
-    string label
-    string network
-    boolean is_active
-    datetime created_at
-  }
+Scope
+	•	Applies to all participants (banks) accessing Paladin and Validium environments.
+	•	Covers user identity lifecycle, authentication, and authorization across all APIs, dashboards, and backend services.
+	•	Ensures each participant has isolated identity domains (realms) with centralized policies.
 
-  USER_CONTRACT_ALLOW {
-    uuid id PK
-    uuid user_id FK
-    uuid contract_id FK
-    boolean is_active
-    datetime created_at
-  }
+⸻
 
-  USER_WALLET_ALLOW {
-    uuid id PK
-    uuid user_id FK
-    uuid wallet_id FK
-    boolean is_active
-    datetime created_at
-  }
-
-  TRANSACTION {
-    uuid id PK
-    uuid org_id FK
-    uuid created_by FK  "user_id"
-    string payload      "JSON as text"
-    string status       "confirmed|failed"
-    datetime created_at
-  }
-
-  %% ---- Catalog ownership by org
-  ORGANIZATION ||--o{ CONTRACT_LIST : catalogs
-  ORGANIZATION ||--o{ WALLET_LIST   : catalogs
-
-  %% ---- Users in org
-  ORGANIZATION ||--o{ "USER" : has
-
-  %% ---- Per-user allow mappings
-  "USER" ||--o{ USER_CONTRACT_ALLOW : can_use_contract
-  CONTRACT_LIST ||--o{ USER_CONTRACT_ALLOW : contract
-
-  "USER" ||--o{ USER_WALLET_ALLOW : can_use_wallet
-  WALLET_LIST ||--o{ USER_WALLET_ALLOW : wallet
-
-  %% ---- Transactions
-  ORGANIZATION ||--o{ TRANSACTION : has_many
-  "USER" ||--o{ TRANSACTION : created_by
+Architecture Overview
+	1.	Identity Provider (IdP)
+	•	Keycloak acts as the central IdP, managing identities for all participant organizations.
+	•	Each bank has a dedicated realm or organizational group for identity isolation.
+	•	Supports federated login if the participant prefers to use its own corporate IdP (via SAML/OIDC).
+	2.	Authentication (AuthN)
+	•	Users authenticate through Keycloak’s SSO portal.
+	•	Supports password, MFA, and token-based authentication.
+	•	Session tokens (JWT/OAuth2) are issued and validated by backend services.
+	3.	Authorization (AuthZ)
+	•	Role-Based Access Control (RBAC) defines user privileges (e.g., Admin, Auditor, Operator).
+	•	Access tokens include roles and organization claims for service-level enforcement.
+	•	Backend microservices validate the JWT using the Keycloak JWKS endpoint.
+	4.	SSO Integration
+	•	All web and API services (Paladin, Validium, and auxiliary dashboards) integrate with Keycloak for SSO.
+	•	Once authenticated, the user can access all authorized systems without re-login.
