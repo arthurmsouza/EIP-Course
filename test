@@ -1,9 +1,45 @@
-Authentication Flow
+sequenceDiagram
+    autonumber
+    title OIDC Authentication & MFA Flow (Validium/Paladin with Keycloak)
 
-The authentication process is managed through Keycloak’s Single Sign-On (SSO) portal using the OpenID Connect (OIDC) protocol. When a user logs in, Keycloak validates the provided credentials and issues a set of session tokens based on OAuth 2.0 standards. These include an ID token that contains user identity claims and an access token used to request access to protected resources. Both tokens are encoded as JWTs and securely transmitted to the client application for use in subsequent API interactions.
+    participant B as User Browser
+    participant I as Ingress/NGINX
+    participant F as Frontend (SPA / Portal)
+    participant A as Backend (OIDC Client/API)
+    participant K as Keycloak (IdP)
 
-⸻
+    Note over F,A: Protected resource requested
 
-Authorization Flow
+    B->>I: GET /app
+    I->>F: Serve app (no session)
 
-Once authentication is complete, the issued access token is attached to each API request sent to the Validium and Paladin backend services. These services validate the token’s signature and claims through Keycloak’s JWKS endpoint to ensure its authenticity and integrity. Authorization decisions are then enforced based on the token’s embedded roles, scopes, and organizational claims (such as org_id or bic). This centralized model ensures consistent, role-based access control and secure interaction between all components within the shared environment.
+    F-->>B: Redirect to Login (OIDC)
+    B->>K: GET /auth/realms/<realm>/protocol/openid-connect/auth<br/>?client_id=<client>&response_type=code&scope=openid<br/>&redirect_uri=<callback>&code_challenge=<pkce_challenge>&code_challenge_method=S256
+
+    K-->>B: Render login page
+
+    B->>K: POST credentials (username/password)
+
+    alt MFA required (per user/group/policy)
+        K-->>B: Prompt MFA (TOTP / WebAuthn / SMS/Email)
+        B->>K: Submit second factor
+        K-->>K: Validate 2nd factor
+    else MFA not required
+        K-->>K: Continue flow
+    end
+
+    K-->>B: 302 Redirect to <callback>?code=<auth_code>&state=<state>
+    B->>A: GET <callback>?code=<auth_code>&state=<state>
+
+    A->>K: POST /protocol/openid-connect/token<br/>grant_type=authorization_code<br/>code=<auth_code><br/>redirect_uri=<callback><br/>client_id=<client><br/>code_verifier=<pkce_verifier>
+    K-->>A: 200 { access_token (JWT), id_token (JWT), refresh_token }
+
+    A-->>A: Validate JWT (iss, aud, exp) via JWKS
+    A-->>F: Set app session / issue app cookie (httpOnly/SameSite)
+    F-->>B: App dashboard
+
+    B->>A: Subsequent API calls with Authorization: Bearer <access_token>
+    A-->>A: Enforce AuthZ (roles/scopes + org_id/bic claims)
+    A-->>B: 200 Response (authorized)
+
+    Note over K: OIDC session managed by Keycloak (SSO)
