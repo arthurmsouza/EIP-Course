@@ -1,1 +1,10 @@
-The Mock Back Office application integrates with the RBAC Middleware via REST API. Once a user session is created, the system retrieves the corresponding API key from AWS Secret Manager based on the user’s role, enabling authorized access to the RBAC Middleware.
+The Mock Back Office delegates deposit, tokenization, redemption, and settlement flows to the RBAC Middleware, which is responsible for interacting directly with the Validium network.
+
+To integrate, the Mock Back Office application connects to the RBAC Middleware via REST API. Once a user session is created, it retrieves the corresponding API key from AWS Secret Manager according to the user’s role, enabling secure and authorized access.
+
+
+
+
+====
+
+The service, developed by ConsenSys, is implemented in TypeScript with modular controllers and services designed for high availability and security. Controllers perform schema validation and enforce RBAC logic, while the service layer uses ethers.js (v6) to connect directly to Validium L2 RPC nodes and interact with smart contracts such as TokenBridge, ERC20/3643, and Settlement. The atomic swap settlement flow leverages EIP-712 typed data for deterministic signing and verification of cross-party transactions. Transactions are relayed through configured providers with explicit nonce control, gas management, and robust error handling.
