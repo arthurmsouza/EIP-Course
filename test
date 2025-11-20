@@ -1,21 +1,4 @@
-Hi team,
-
-Following the latest internal review of the Validium Technical Design document, please find below the main sections that require clarification or complementary detail. These updates should be reflected in the next iteration of the application and infrastructure design.
-
-1. Finality (Tracing, Proving, Posting)
-
-Include a description of the Web3Signer component — how it integrates into the finality process and whether any security mechanism (HSM, KMS, or Secret Manager) is used to store and protect private keys used for transaction signing.
-
-2. Execution / Linea Nodes
-
-Describe the roles of the three RPC node components — Forest Full Node, Bonsai Node, and Geth Client (Archive). Explain the purpose of each, how read/write operations are optimized, and how the Caddy proxy is used in this setup.
-
-3. Storage / Verification (Data Availability)
-
-Clarify the rationale for adopting EigenDA — how it operates as a data availability layer, associated costs and dependencies, and why an external cloud solution was preferred over hosting within AWS for security and compliance.
-
-4. Validium Block Explorer
-
-4.1 Solution Design: Specify whether the proposed solution is Blockscout or custom-built, how the indexing process is configured (parameters, database).
-
-4.2 Access Control: Describe how access control will be implemented so that each entity can only view its own transactions.
+Hi team, I’ll be updating some points:
+	•	Update the diagram considering our custom login page instead of Keycloak.
+	•	Include more details in the infrastructure section regarding high availability and data availability.
+	•	Explain how data segregation is structured (realm, database).
