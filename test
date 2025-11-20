@@ -1,4 +1,3 @@
-Hi team, I’ll be updating some points:
-	•	Update the diagram considering our custom login page instead of Keycloak.
-	•	Include more details in the infrastructure section regarding high availability and data availability.
-	•	Explain how data segregation is structured (realm, database).
+Title: Data Segregation Strategy
+
+PostgreSQL data segregation is implemented by isolating each tenant’s information into its own database, ensuring that schemas, tables, and data remain fully separated at the storage and access-control level. This physical separation eliminates the risk of cross-tenant queries and simplifies backup, restore, and lifecycle management per tenant. Complementing this, Keycloak enforces identity and access segregation using realms, where each realm represents a completely isolated security domain with its own users, clients, roles, policies, and authentication flows. By aligning each PostgreSQL database with a corresponding Keycloak realm, the architecture guarantees strict isolation between entities both at the data layer and the identity/security layer, creating a robust multi-tenant foundation with strong boundaries across tenants.
