@@ -1,1 +1,12 @@
-First, you will be redirected to a page requesting authentication due to restricted access. Use the following credentials:
+Once you enter your username and password and click Sign In:
+	1.	You will receive a One-Time Password (OTP) by email.
+	2.	Look for an email with the subject:
+“Your Verification Code for SDL”
+	3.	Enter the 6-digit OTP on the screen.
+	4.	Click Verify Code.
+
+#include an image of the OTP page
+
+Access Granted
+
+Once the OTP is verified, you will be redirected to the main dashboard and can begin using the Swift Digital Ledger system.
