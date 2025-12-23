@@ -1,12 +1,13 @@
-Once you enter your username and password and click Sign In:
-	1.	You will receive a One-Time Password (OTP) by email.
-	2.	Look for an email with the subject:
-“Your Verification Code for SDL”
-	3.	Enter the 6-digit OTP on the screen.
-	4.	Click Verify Code.
+The Approval Flow allows authorized participants to review and approve pending payment transactions before they proceed to interbank settlement.
+Each transaction must be approved by both the Credit Agent and the Debtor Agent to be finalized.
 
-#include an image of the OTP page
+The list displays all pending transactions awaiting approval.
 
-Access Granted
+Click the Select checkbox corresponding to the transaction you want to approve.
 
-Once the OTP is verified, you will be redirected to the main dashboard and can begin using the Swift Digital Ledger system.
+Click Approve to confirm the transaction.
+
+Approval is not completed with a single confirmation.
+	•	The transaction must be approved by both parties:
+	•	Credit Agent
+	•	Correspondent Agent
